@@ -1,0 +1,4 @@
+"use client";
+import {useEffect} from "react";
+import {useLocale} from "next-intl";
+export function LocaleDocument(){const locale=useLocale();useEffect(()=>{document.documentElement.lang=locale},[locale]);return null}

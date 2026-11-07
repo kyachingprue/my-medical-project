@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  RECEPTIONIST
+  ADMIN
+}
+
+enum Weekday {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_CANCELLATION
+  APPOINTMENT_RESCHEDULED
+  DOCTOR_LEAVE
+  APPOINTMENT_REMINDER
+}
+
+model User {
+  id           String        @id @default(cuid())
+  firebaseUid  String        @unique
+  name         String
+  email        String        @unique
+  emailVerified Boolean      @default(false)
+  phone        String?
+  image        String?
+  role         UserRole      @default(PATIENT)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+  createdAppointments Appointment[] @relation("AppointmentCreator")
+  notificationLogs NotificationLog[]
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+model Doctor {
+  id              String          @id @default(cuid())
+  name            String
+  email           String          @unique
+  phone           String
+  profileImage    String?
+  specialization  String
+  qualification   String
+  experienceYears Int             @default(0)
+  bio             String          @db.Text
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  services        DoctorService[]
+  workingHours    WorkingHours[]
+  timeOff         TimeOff[]
+  appointments    Appointment[]
+
+  @@index([name])
+  @@index([specialization])
+  @@index([isActive, createdAt])
+}
+
+model Service {
+  id              String          @id @default(cuid())
+  name            String
+  slug            String          @unique
+  description     String          @db.Text
+  durationMinutes Int
+  price           Decimal         @db.Decimal(10, 2)
+  image           String?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  doctors         DoctorService[]
+  appointments    Appointment[]
+
+  @@index([name])
+  @@index([isActive, createdAt])
+}
+
+model DoctorService {
+  id        String   @id @default(cuid())
+  doctorId  String
+  serviceId String
+  createdAt DateTime @default(now())
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([doctorId, serviceId])
+  @@index([serviceId])
+}
+
+model WorkingHours {
+  id        String   @id @default(cuid())
+  doctorId  String
+  dayOfWeek Weekday
+  startTime String   @db.VarChar(5)
+  endTime   String   @db.VarChar(5)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@index([dayOfWeek, isActive])
+  @@index([doctorId, dayOfWeek])
+}
+
+model TimeOff {
+  id        String   @id @default(cuid())
+  doctorId  String
+  startAt   DateTime @db.Timestamptz(3)
+  endAt     DateTime @db.Timestamptz(3)
+  reason    String   @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+
+  @@index([doctorId, startAt, endAt])
+  @@index([startAt, endAt])
+}
+
+model Chair {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+}
+
+model Appointment {
+  id                 String            @id @default(cuid())
+  patientId          String?
+  patientName        String
+  patientPhone       String?
+  doctorId           String
+  serviceId          String
+  chairId            String
+  startAt            DateTime          @db.Timestamptz(3)
+  endAt              DateTime          @db.Timestamptz(3)
+  status             AppointmentStatus @default(CONFIRMED)
+  cancellationReason String?           @db.VarChar(500)
+  createdById        String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  patient            User?             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  createdBy          User?             @relation("AppointmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  doctor             Doctor            @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  service            Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  chair              Chair             @relation(fields: [chairId], references: [id], onDelete: Restrict)
+  notifications     NotificationLog[]
+
+  @@index([doctorId, startAt, status])
+  @@index([chairId, startAt, status])
+  @@index([patientId, startAt, status])
+  @@index([status, startAt])
+}
+
+model NotificationLog {
+  id             String            @id @default(cuid())
+  idempotencyKey String            @unique
+  appointmentId  String?
+  userId         String?
+  type           NotificationType
+  recipientEmail String
+  subject        String
+  status         NotificationStatus @default(PENDING)
+  provider       String            @default("RESEND")
+  providerMessage String?
+  attempts       Int               @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  appointment    Appointment?      @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([appointmentId, type])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorUid   String
+  actorEmail String
+  action     String
+  entity     String
+  entityId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorUid, createdAt])
+}

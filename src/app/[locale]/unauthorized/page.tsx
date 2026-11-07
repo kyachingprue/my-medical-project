@@ -1,0 +1,2 @@
+import {Link} from "@/i18n/navigation";
+export default function UnauthorizedPage(){return <main className="auth-page"><section className="auth-card"><span className="section-kicker">ACCESS RESTRICTED</span><h1>This workspace isn’t available for your account.</h1><p className="auth-description">If you think you should have access, please contact the clinic administrator.</p><Link className="button button-primary" href="/">Return home</Link></section></main>}

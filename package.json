@@ -6,21 +6,50 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --import tsx --test src/lib/management/schemas.test.ts src/lib/appointments/time.test.ts src/lib/appointments/schemas.test.ts src/lib/notifications/email.test.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@hookform/resolvers": "^7.0.3",
+    "@prisma/client": "^6.19.3",
+    "firebase": "^13.2.0",
+    "firebase-admin": "^14.5.0",
+    "framer-motion": "^14.10.1",
+    "google-auth-library": "^11.3.3",
+    "lucide-react": "^1.70.0",
     "next": "16.4.5",
+    "next-intl": "^4.14.9",
+    "next-themes": "^0.4.6",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-hook-form": "^7.91.0",
+    "recharts": "^3.10.1",
+    "sonner": "^2.0.8",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.7",
+    "deepmerge-ts": "8.0.2"
   }
 }
