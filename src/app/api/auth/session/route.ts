@@ -3,7 +3,6 @@ import {NextResponse} from "next/server";
 import {z} from "zod";
 import {getAdminApp} from "@/lib/firebase/admin";
 import {getCurrentUser,SESSION_COOKIE} from "@/lib/auth/session";
-import {logUserAction} from "@/lib/management/audit";
 import {prisma} from "@/lib/prisma";
 
 const schema=z.object({idToken:z.string().min(1),expectedRole:z.enum(["PATIENT","RECEPTIONIST","ADMIN"])});
@@ -30,9 +29,9 @@ export async function POST(request:Request){
     user=await prisma.$transaction(async tx=>{
       const existing=await tx.user.findUnique({where:{firebaseUid:account.uid},select:{id:true}});
       const saved=await tx.user.upsert({where:{firebaseUid:account.uid},update:{name:account.displayName??email,email,image:account.photoURL??null,emailVerified:account.emailVerified},create:{firebaseUid:account.uid,name:account.displayName??email,email,image:account.photoURL??null,emailVerified:account.emailVerified,role:"PATIENT"},select:{id:true,role:true}});
-      if(!existing)await logUserAction(tx,saved.id,"REGISTER","User",saved.id,{role:saved.role});
+      if(!existing)await tx.auditLog.create({data:{actorUid:account.uid,actorEmail:email,action:"REGISTER",entity:"User",entityId:saved.id,details:{role:saved.role}}});
       return saved;
-    });
+    },{maxWait:10_000,timeout:20_000});
   }catch(error){console.error("Could not persist authenticated user:",error);return NextResponse.json({error:"Unable to load your account right now."},{status:500})}
   if(user.role!==parsed.data.expectedRole)return NextResponse.json({error:"ROLE_MISMATCH",role:user.role},{status:403});
   try{
