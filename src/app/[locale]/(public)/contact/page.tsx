@@ -12,6 +12,6 @@ export default function ContactPage(){
       <div className="contact-item"><span><Mail/></span><div><h2>{t("email")}</h2><a href="mailto:hello@smilecraft.example">hello@smilecraft.example</a></div></div>
       <div className="contact-item"><span><Clock3/></span><div><h2>{t("hours")}</h2><p>{t("days")}<br/>{t("closed")}</p></div></div>
       <p className="data-note">{t("dataNote")}</p>
-    </div><div className="contact-card"><span className="section-kicker">{t("ctaKicker")}</span><h2>{t("ctaTitle")}</h2><p>{t("ctaText")}</p><Link className="button button-primary" href="/sign-in">{t("ctaButton")} ↗</Link><div className="contact-card-note">{t("urgent")}</div><div className="contact-card-decoration">✳</div></div></section>
+    </div><div className="contact-card"><span className="section-kicker">{t("ctaKicker")}</span><h2>{t("ctaTitle")}</h2><p>{t("ctaText")}</p><Link className="button button-primary" href="/appointment">{t("ctaButton")} ↗</Link><div className="contact-card-note">{t("urgent")}</div><div className="contact-card-decoration">✳</div></div></section>
   </div>;
 }

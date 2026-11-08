@@ -2,10 +2,24 @@ import "server-only";
 import {getAuth} from "firebase-admin/auth";
 import {cookies} from "next/headers";
 import {connection} from "next/server";
+import {Prisma} from "@prisma/client";
 import {getAdminApp} from "@/lib/firebase/admin";
 import {prisma} from "@/lib/prisma";
 
 export const SESSION_COOKIE = "__session";
+
+async function findUserWithRetry(firebaseUid:string){
+  let retries=0;
+  while(true){
+    try{
+      return await prisma.user.findUnique({where:{firebaseUid}});
+    }catch(error){
+      if(!(error instanceof Prisma.PrismaClientInitializationError)||error.errorCode!=="P1001"||retries>=3)throw error;
+      retries+=1;
+      await new Promise(resolve=>setTimeout(resolve,retries*1000));
+    }
+  }
+}
 
 export async function getCurrentUser() {
   await connection();
@@ -18,5 +32,5 @@ export async function getCurrentUser() {
     console.error("Session verification failed:", error);
     return null;
   }
-  return prisma.user.findUnique({where: {firebaseUid: claims.uid}});
+  return findUserWithRetry(claims.uid);
 }
