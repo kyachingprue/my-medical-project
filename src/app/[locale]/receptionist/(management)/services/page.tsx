@@ -1,8 +1,14 @@
+import {Suspense} from "react";
 import {getTranslations} from "next-intl/server";
 import {connection} from "next/server";
+import {DashboardLoading} from "@/components/dashboards/dashboard-loading";
 import {prisma} from "@/lib/prisma";
 
-export default async function ReceptionistServicesPage(){
+export default function ReceptionistServicesPage(){
+  return <Suspense fallback={<DashboardLoading kind="appointments" label="Loading services"/>}><ReceptionistServicesContent/></Suspense>;
+}
+
+async function ReceptionistServicesContent(){
   await connection();
   const [services,t]=await Promise.all([
     prisma.service.findMany({where:{isActive:true},include:{doctors:{where:{doctor:{isActive:true}},include:{doctor:{select:{name:true}}}}},orderBy:{name:"asc"}}),

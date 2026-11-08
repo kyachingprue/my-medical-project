@@ -4,6 +4,7 @@ import {CalendarDays,Clock3,Stethoscope} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link} from "@/i18n/navigation";
 import {canPatientCancelAppointment} from "@/lib/appointments/time";
+import {confirmAppointmentCancellation} from "./appointment-cancel-confirmation";
 import {useEffect,useState} from "react";
 
 type Props={role:"patient"|"receptionist"|"admin";initialPeriod?:"upcoming"|"previous"|"cancelled"|"all";display?:"cards"|"table"};
@@ -46,7 +47,7 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
   },[endpoint,period,page,limit,requestKey,t]);
 
   async function cancel(appointment:Appointment){
-    if(!window.confirm(t("confirmCancel")))return;
+    if(!await confirmAppointmentCancellation(t("confirmCancel"),t("keepAppointment"),t("confirmCancellation")))return;
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
       const body=await response.json() as Result;

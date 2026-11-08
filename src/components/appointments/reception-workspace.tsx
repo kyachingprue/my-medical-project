@@ -3,6 +3,7 @@
 import {CalendarDays,Search,Stethoscope} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link} from "@/i18n/navigation";
+import {confirmAppointmentCancellation} from "./appointment-cancel-confirmation";
 import {useEffect,useState} from "react";
 
 type Props={role:"receptionist"|"admin"};
@@ -55,7 +56,7 @@ export function ReceptionWorkspace({role}:Props){
   },[api,date,view,status,doctorId,query,t,queryKey]);
 
   async function setAppointmentStatus(appointment:Appointment,next:"COMPLETED"|"NO_SHOW"|"CANCELLED"){
-    const confirmed=next!=="CANCELLED"||window.confirm(t("confirmCancel"));
+    const confirmed=next!=="CANCELLED"||await confirmAppointmentCancellation(t("confirmCancel"),t("keepAppointment"),t("confirmCancellation"));
     if(!confirmed)return;
     const endpoint=role==="admin"?`/api/admin/appointments/${appointment.id}/status`:`/api/receptionist/appointments/${appointment.id}`;
     try{

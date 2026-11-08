@@ -1,4 +1,5 @@
 import {NotificationStatus,NotificationType,type Prisma} from "@prisma/client";
+import {after} from "next/server";
 import {prisma} from "@/lib/prisma";
 
 type AppointmentNotificationType =
@@ -70,6 +71,16 @@ export async function retryNotification(id: string) {
 
 export async function deliverAppointmentNotification(id:string){
   return deliverNotification(id);
+}
+
+export function scheduleAppointmentNotification(id:string,event:"appointment confirmation"|"appointment reschedule"|"appointment cancellation"){
+  after(async()=>{
+    try{
+      await deliverAppointmentNotification(id);
+    }catch(error){
+      console.error(`Could not deliver ${event} email:`,error);
+    }
+  });
 }
 
 export function getNotificationSubject(type: AppointmentNotificationType) {

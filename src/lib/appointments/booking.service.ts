@@ -1,8 +1,8 @@
 import {AppointmentStatus,Prisma,UserRole} from "@prisma/client";
 import {prisma} from "@/lib/prisma";
-import {BOOKING_BUFFER_MINUTES,canPatientCancelAppointment,intervalsOverlap} from "./time";
+import {BOOKING_BUFFER_MINUTES,canPatientCancelAppointment} from "./time";
 import {generateAvailableSlots} from "./slots.service";
-import {createAppointmentNotification,deliverAppointmentNotification} from "@/lib/notifications/email";
+import {createAppointmentNotification,scheduleAppointmentNotification} from "@/lib/notifications/email";
 import {lockDoctorRow} from "@/lib/management/doctor-lock";
 import {logUserAction} from "@/lib/management/audit";
 
@@ -38,7 +38,7 @@ async function createAppointmentTransaction(
       const patientUser=patient.patientId?await lockPatientRow(tx,patient.patientId):null;
       if(patient.patientId&&!patientUser)return fail("PATIENT_NOT_FOUND","Patient account not found.",404);
       if(patientUser&&patientUser.role!==UserRole.PATIENT)return fail("INVALID_PATIENT","Appointments can only be assigned to patient accounts.",400);
-      if(!await lockDoctorRow(tx,input.doctorId))return fail("DOCTOR_NOT_FOUND","Doctor not found.",404);
+      if(!await lockDoctorRow(tx,input.doctorId,true))return fail("DOCTOR_NOT_FOUND","Doctor not found.",404);
       if(patientUser){
         const upcoming=await tx.appointment.count({where:{patientId:patientUser.id,status:AppointmentStatus.CONFIRMED,startAt:{gte:now}}});
         if(upcoming>=2)return fail("PATIENT_BOOKING_LIMIT","A patient can have at most two upcoming appointments.",409);
@@ -49,20 +49,9 @@ async function createAppointmentTransaction(
       const slot=available.slots.find(candidate=>candidate.time===input.time);
       if(!slot)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
 
-      const chairs=await lockAvailableChairs(tx);
-      if(!chairs.length)return fail("NO_CHAIRS_AVAILABLE","No clinic chairs are currently available.",409);
-      const conflicting=await tx.appointment.findMany({
-        where:{chairId:{in:chairs},startAt:{lt:new Date(slot.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000)},status:{not:AppointmentStatus.CANCELLED}},
-        select:{chairId:true,startAt:true,endAt:true},
-      });
-      const chairId=chairs.find(id=>!conflicting.some(item=>item.chairId===id&&intervalsOverlap(
-        slot.startAt,new Date(slot.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000),
-        item.startAt,new Date(item.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000),
-      )));
+      const chairId=await lockAvailableChair(tx,slot.startAt,slot.endAt);
       if(!chairId)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
 
-      const service=await tx.service.findUnique({where:{id:input.serviceId},select:{name:true,durationMinutes:true}});
-      if(!service)return fail("SERVICE_NOT_FOUND","Service not found.",404);
       const created=await tx.appointment.create({
         data:{
           patientId:patientUser?.id??null,
@@ -86,9 +75,9 @@ async function createAppointmentTransaction(
       });
       await logUserAction(tx,actor.id,"CREATE","Appointment",created.id,{doctorId:created.doctorId,serviceId:created.serviceId,startAt:created.startAt.toISOString(),endAt:created.endAt.toISOString()});
       return {appointment:created,notificationId};
-    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:15_000});
+    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:30_000});
     if(isFailure(appointment))return appointment;
-    if(appointment.notificationId)await deliverAppointmentNotification(appointment.notificationId).catch(error=>console.error("Could not deliver appointment confirmation email:",error));
+    if(appointment.notificationId)scheduleAppointmentNotification(appointment.notificationId,"appointment confirmation");
     return {kind:"success",appointment:appointment.appointment};
   }catch(error){
     if(isBookingConflict(error))return fail("SLOT_UNAVAILABLE","This appointment slot was booked by another request.",409);
@@ -106,7 +95,7 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
       if(actor.role===UserRole.PATIENT&&current.patientId!==actor.id)return fail("APPOINTMENT_NOT_FOUND","Appointment not found.",404);
       if(current.status!==AppointmentStatus.CONFIRMED)return fail("APPOINTMENT_NOT_RESCHEDULABLE","Only confirmed appointments can be rescheduled.",409);
       const now=new Date();
-      if(!await lockDoctorRow(tx,input.doctorId))return fail("DOCTOR_NOT_FOUND","Doctor not found.",404);
+      if(!await lockDoctorRow(tx,input.doctorId,true))return fail("DOCTOR_NOT_FOUND","Doctor not found.",404);
       if(current.startAt<=now)return fail("APPOINTMENT_NOT_RESCHEDULABLE","Past appointments cannot be rescheduled.",409);
       if(current.doctorId===input.doctorId&&current.serviceId===input.serviceId){
         const currentLocal=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dhaka",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(current.startAt);
@@ -118,16 +107,7 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
       const slot=available.slots.find(candidate=>candidate.time===input.time);
       if(!slot)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
 
-      const chairs=await lockAvailableChairs(tx);
-      if(!chairs.length)return fail("NO_CHAIRS_AVAILABLE","No clinic chairs are currently available.",409);
-      const conflicting=await tx.appointment.findMany({
-        where:{id:{not:id},chairId:{in:chairs},startAt:{lt:new Date(slot.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000)},status:{not:AppointmentStatus.CANCELLED}},
-        select:{chairId:true,startAt:true,endAt:true},
-      });
-      const chairId=chairs.find(candidate=>!conflicting.some(item=>item.chairId===candidate&&intervalsOverlap(
-        slot.startAt,new Date(slot.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000),
-        item.startAt,new Date(item.endAt.getTime()+BOOKING_BUFFER_MINUTES*60_000),
-      )));
+      const chairId=await lockAvailableChair(tx,slot.startAt,slot.endAt,id);
       if(!chairId)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
       const updated=await tx.appointment.update({where:{id},data:{doctorId:input.doctorId,serviceId:input.serviceId,chairId,startAt:slot.startAt,endAt:slot.endAt},include:appointmentDetails});
       const notificationId=await createAppointmentNotification(tx,{
@@ -138,9 +118,9 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
       });
       await logUserAction(tx,actor.id,"RESCHEDULE","Appointment",id,{before:{doctorId:current.doctorId,serviceId:current.serviceId,startAt:current.startAt.toISOString(),endAt:current.endAt.toISOString()},after:{doctorId:updated.doctorId,serviceId:updated.serviceId,startAt:updated.startAt.toISOString(),endAt:updated.endAt.toISOString()}});
       return {appointment:updated,notificationId};
-    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:15_000});
+    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:30_000});
     if(isFailure(appointment))return appointment;
-    if(appointment.notificationId)await deliverAppointmentNotification(appointment.notificationId).catch(error=>console.error("Could not deliver appointment reschedule email:",error));
+    if(appointment.notificationId)scheduleAppointmentNotification(appointment.notificationId,"appointment reschedule");
     return {kind:"success",appointment:appointment.appointment};
   }catch(error){
     if(isBookingConflict(error))return fail("SLOT_UNAVAILABLE","This appointment slot was booked by another request.",409);
@@ -152,7 +132,7 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
 export async function cancelAppointment(actor:BookingActor,id:string,reason?:string){
   try{
     const result=await prisma.$transaction(async tx=>{
-      await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE NOWAIT`;
       const appointment=await tx.appointment.findUnique({where:{id}});
       if(!appointment)return fail("APPOINTMENT_NOT_FOUND","Appointment not found.",404);
       if(actor.role===UserRole.PATIENT&&appointment.patientId!==actor.id)return fail("APPOINTMENT_NOT_FOUND","Appointment not found.",404);
@@ -167,11 +147,12 @@ export async function cancelAppointment(actor:BookingActor,id:string,reason?:str
       });
       await logUserAction(tx,actor.id,"CANCEL","Appointment",id,{statusBefore:appointment.status,statusAfter:updated.status,reason:reason??null});
       return {appointment:updated,notificationId};
-    });
+    },{maxWait:10_000,timeout:20_000});
     if(isFailure(result))return result;
-    if(result.notificationId)await deliverAppointmentNotification(result.notificationId).catch(error=>console.error("Could not deliver appointment cancellation email:",error));
+    if(result.notificationId)scheduleAppointmentNotification(result.notificationId,"appointment cancellation");
     return {kind:"success" as const,appointment:result.appointment};
   }catch(error){
+    if(isBookingConflict(error))return fail("APPOINTMENT_BUSY","This appointment is being updated. Refresh and try again.",409);
     console.error("Could not cancel appointment:",error);
     return fail("APPOINTMENT_CANCELLATION_FAILED","Unable to cancel the appointment.",500);
   }
@@ -186,19 +167,37 @@ function isFailure(value:unknown):value is BookingFailure{
 }
 
 async function lockPatientRow(tx:Prisma.TransactionClient,id:string){
-  const rows=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "User" WHERE "id" = ${id} FOR UPDATE`;
-  if(!rows.length)return null;
-  return tx.user.findUnique({where:{id},select:{id:true,name:true,phone:true,role:true}});
+  const rows=await tx.$queryRaw<Array<{id:string;name:string;phone:string|null;role:UserRole}>>`SELECT "id","name","phone","role" FROM "User" WHERE "id" = ${id} FOR UPDATE NOWAIT`;
+  return rows[0]??null;
 }
 
-async function lockAvailableChairs(tx:Prisma.TransactionClient){
-  const rows=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "Chair" WHERE "isActive" = true ORDER BY "id" FOR UPDATE SKIP LOCKED`;
-  return rows.map(row=>row.id);
+async function lockAvailableChair(tx:Prisma.TransactionClient,startAt:Date,endAt:Date,excludeAppointmentId?:string){
+  const bufferMs=BOOKING_BUFFER_MINUTES*60_000;
+  const bufferedStart=new Date(startAt.getTime()-bufferMs);
+  const bufferedEnd=new Date(endAt.getTime()+bufferMs);
+  const rows=await tx.$queryRaw<Array<{id:string}>>`
+    SELECT chair."id"
+    FROM "Chair" AS chair
+    WHERE chair."isActive" = true
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "Appointment" AS appointment
+        WHERE appointment."chairId" = chair."id"
+          AND appointment."status" <> 'CANCELLED'
+          AND appointment."startAt" < ${bufferedEnd}
+          AND appointment."endAt" > ${bufferedStart}
+          AND (${excludeAppointmentId ?? null}::text IS NULL OR appointment."id" <> ${excludeAppointmentId ?? null})
+      )
+    ORDER BY chair."id"
+    LIMIT 1
+    FOR UPDATE OF chair SKIP LOCKED
+  `;
+  return rows[0]?.id??null;
 }
 
 function isBookingConflict(error:unknown){
   if(typeof error!=="object"||error===null)return false;
   const candidate=error as {code?:string;meta?:{code?:string;database_error?:string;message?:string};message?:string};
   const message=[candidate.message,candidate.meta?.database_error,candidate.meta?.message].filter(Boolean).join(" ");
-  return candidate.code==="P2004"||candidate.meta?.code==="23P01"||message.includes("prevent_doctor_booking_overlap")||message.includes("prevent_chair_booking_overlap");
+  return candidate.code==="P2004"||candidate.meta?.code==="23P01"||candidate.meta?.code==="55P03"||/55P03|could not obtain lock/i.test(message)||message.includes("prevent_doctor_booking_overlap")||message.includes("prevent_chair_booking_overlap");
 }

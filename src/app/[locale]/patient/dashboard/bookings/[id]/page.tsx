@@ -1,10 +1,16 @@
+import {Suspense} from "react";
 import {notFound} from "next/navigation";
 import {connection} from "next/server";
 import {AppointmentDetails} from "@/components/appointments/appointment-details";
+import {DashboardLoading} from "@/components/dashboards/dashboard-loading";
 import {requireRole} from "@/lib/auth/authorize";
 import {prisma} from "@/lib/prisma";
 type Props={params:Promise<{locale:string;id:string}>};
-export default async function PatientAppointmentDetailsPage({params}:Props){
+export default function PatientAppointmentDetailsPage({params}:Props){
+  return <Suspense fallback={<DashboardLoading kind="workspace" label="Loading appointment details"/>}><PatientAppointmentDetails params={params}/></Suspense>;
+}
+
+async function PatientAppointmentDetails({params}:Props){
   await connection();
   const [{locale,id}]=await Promise.all([params]);
   const user=await requireRole("PATIENT",locale);

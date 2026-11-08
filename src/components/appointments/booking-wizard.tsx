@@ -9,7 +9,7 @@ type Props={mode:"patient"|"receptionist";canBook?:boolean;appointment?:{id:stri
 type Service={id:string;name:string;durationMinutes:number;price:number|string;isActive:boolean};
 type Doctor={id:string;name:string;specialization:string};
 type Slot={time:string;startAt:string;endAt:string;durationMinutes:number};
-type ApiResult<T>={data:T;error?:{message?:string}};
+type ApiResult<T>={data:T;error?:{code?:string;message?:string}};
 
 function dhakaDate(){
   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dhaka",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -52,6 +52,14 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
   const selectedService=services.find(service=>service.id===serviceId);
   const selectedDoctor=availableDoctors.find(doctor=>doctor.id===doctorId);
   const selectedSlot=availableSlots.find(slot=>slot.time===slotTime);
+
+  async function refreshAvailableSlots(){
+    const response=await fetch(`/api/slots?doctorId=${encodeURIComponent(doctorId)}&serviceId=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`);
+    const body=await response.json() as ApiResult<Slot[]>;
+    if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+    setSlots(body.data);
+    setSlotQuery(slotKey);
+  }
 
   useEffect(()=>{
     let active=true;
@@ -98,7 +106,14 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
       const payload={doctorId,serviceId,date,time:slotTime,...(receptionist&&!appointment?{patientName:guestName,patientPhone:guestPhone}:{})};
       const response=await fetch(endpoint,{method:appointment?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
       const body=await response.json() as ApiResult<{id:string}>&{error?:{message?:string}};
-      if(!response.ok)throw new Error(body.error?.message??t("bookingFailed"));
+      if(!response.ok){
+        if(body.error?.code==="SLOT_UNAVAILABLE"){
+          setSlotTime("");
+          await refreshAvailableSlots();
+          throw new Error(t("slotTaken"));
+        }
+        throw new Error(body.error?.message??t("bookingFailed"));
+      }
       if(receptionist){setSaved(true);router.refresh()}
       else if(appointment){router.push(`/patient/dashboard/bookings/${appointment.id}`);router.refresh()}
       else router.push(`/patient/dashboard/bookings/${body.data.id}`);

@@ -2,7 +2,7 @@ import {NextResponse} from "next/server";
 import {AppointmentStatus,UserRole} from "@prisma/client";
 import {apiError,authorizeApi} from "@/lib/api/responses";
 import {appointmentStatusSchema} from "@/lib/appointments/schemas";
-import {createAppointmentNotification,deliverAppointmentNotification} from "@/lib/notifications/email";
+import {createAppointmentNotification,scheduleAppointmentNotification} from "@/lib/notifications/email";
 import {logUserAction} from "@/lib/management/audit";
 import {prisma} from "@/lib/prisma";
 
@@ -15,7 +15,7 @@ export async function PATCH(request:Request,{params}:Context){
   const {id}=await params;
   try{
     const result=await prisma.$transaction(async tx=>{
-      await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE NOWAIT`;
       const current=await tx.appointment.findUnique({where:{id},select:{id:true,status:true}});
       if(!current)return null;
       if(current.status!==AppointmentStatus.CONFIRMED)return {conflict:true as const};
@@ -27,13 +27,21 @@ export async function PATCH(request:Request,{params}:Context){
       const notificationId=updated.status===AppointmentStatus.CANCELLED?await createAppointmentNotification(tx,{type:"APPOINTMENT_CANCELLATION",appointment:updated,userId:updated.patientId,recipientEmail:updated.patient?.email}):null;
       await logUserAction(tx,access.user.id,updated.status===AppointmentStatus.CANCELLED?"CANCEL":"STATUS_CHANGE","Appointment",id,{statusBefore:current.status,statusAfter:updated.status});
       return {appointment:updated,notificationId};
-    });
+    },{maxWait:10_000,timeout:20_000});
     if(!result)return apiError("APPOINTMENT_NOT_FOUND","Appointment not found.",404);
     if("conflict" in result)return apiError("INVALID_STATUS_TRANSITION","Only confirmed appointments can change status.",409);
-    if(result.notificationId)await deliverAppointmentNotification(result.notificationId).catch(error=>console.error("Could not deliver appointment cancellation email:",error));
+    if(result.notificationId)scheduleAppointmentNotification(result.notificationId,"appointment cancellation");
     return NextResponse.json({data:result.appointment});
   }catch(error){
+    if(isAppointmentLockConflict(error))return apiError("APPOINTMENT_BUSY","This appointment is being updated. Refresh and try again.",409);
     console.error("Could not update appointment status:",error);
     return apiError("APPOINTMENT_STATUS_UPDATE_FAILED","Unable to update appointment status.",500);
   }
+}
+
+function isAppointmentLockConflict(error:unknown){
+  if(typeof error!=="object"||error===null)return false;
+  const candidate=error as {code?:string;meta?:{code?:string;message?:string;database_error?:string};message?:string};
+  const message=[candidate.message,candidate.meta?.message,candidate.meta?.database_error].filter(Boolean).join(" ");
+  return candidate.meta?.code==="55P03"||/55P03|could not obtain lock|could not obtain a lock/i.test(message);
 }

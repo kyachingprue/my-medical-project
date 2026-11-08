@@ -71,6 +71,12 @@ export function SiteNav() {
       document.removeEventListener("keydown", escape);
     };
   }, []);
+  useEffect(()=>{
+    if(!menu)return;
+    const previousOverflow=document.body.style.overflow;
+    document.body.style.overflow="hidden";
+    return ()=>{document.body.style.overflow=previousOverflow};
+  },[menu]);
 
   async function logout() {
     setLogoutError("");
@@ -98,7 +104,12 @@ export function SiteNav() {
   return <header className="site-header">
     <div className="nav-shell" ref={navRef}>
       <Link className="brand" href="/" aria-label="SmileCraft home"><span className="brand-mark"><span /></span><span>smile<span className="brand-light">craft</span></span></Link>
-      <nav className={`main-nav ${menu ? "is-open" : ""}`} aria-label="Main navigation">
+      <button className={`mobile-nav-backdrop ${menu ? "is-open" : ""}`} type="button" aria-label={t("close")} tabIndex={menu?0:-1} onClick={()=>setMenu(false)}/>
+      <nav id="mobile-navigation" className={`main-nav ${menu ? "is-open" : ""}`} aria-label="Main navigation">
+        <div className="mobile-nav-header">
+          <span className="mobile-nav-title">smile<span>craft</span></span>
+          <button className="mobile-nav-close icon-button" type="button" aria-label={t("close")} onClick={()=>setMenu(false)}><X size={20}/></button>
+        </div>
         {links.map(([key, url]) => {
           const active = url === "/" ? pathname === "/" : pathname === url || pathname.startsWith(`${url}/`);
           return <Link key={key} href={url} className={active ? "is-active" : undefined} aria-current={active ? "page" : undefined} onClick={() => setMenu(false)}>{t(key)}</Link>;
@@ -123,7 +134,7 @@ export function SiteNav() {
           </div>}
         </div> : <Link className="nav-signin" href="/sign-in">{t("signIn")}</Link>}
         <Link className="button button-primary nav-cta" href={action.href}>{action.label}<span>↗</span></Link>
-        <button className="mobile-menu icon-button" aria-label={t("menu")} aria-expanded={menu} onClick={() => setMenu((open) => !open)}>{menu ? <X /> : <Menu />}</button>
+        <button className="mobile-menu icon-button" aria-label={t("menu")} aria-expanded={menu} aria-controls="mobile-navigation" onClick={() => setMenu((open) => !open)}><Menu /></button>
       </div>
     </div>
   </header>;

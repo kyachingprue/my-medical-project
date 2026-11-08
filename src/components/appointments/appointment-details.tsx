@@ -3,6 +3,7 @@
 import {CalendarDays,Clock3,MapPin,Stethoscope} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link,useRouter} from "@/i18n/navigation";
+import {confirmAppointmentCancellation} from "./appointment-cancel-confirmation";
 import {useState} from "react";
 
 type Props={role:"patient"|"receptionist"|"admin";appointment:{id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:number|string};chair:{id:string;name:string}}};
@@ -14,7 +15,7 @@ export function AppointmentDetails({role,appointment}:Props){
   const dateFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"full"});
   const timeFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",hour:"numeric",minute:"2-digit"});
   async function cancel(){
-    if(!window.confirm(t("confirmCancel")))return;
+    if(!await confirmAppointmentCancellation(t("confirmCancel"),t("keepAppointment"),t("confirmCancellation")))return;
     setBusy(true);setError("");
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
