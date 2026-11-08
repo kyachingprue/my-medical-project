@@ -9,7 +9,7 @@ export async function listAppointments(request:Request,roles:UserRole[]){
   if(access.response)return access.response;
   const parsed=appointmentListQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if(!parsed.success)return apiError("INVALID_APPOINTMENT_FILTER","Appointment filters are invalid.",400,parsed.error.flatten());
-  const {page,limit,date,from,to,status,period,q,doctorId}=parsed.data;
+  const {page,limit,date,from,to,status,period,q,doctorId,serviceId}=parsed.data;
   const now=new Date();
   const startAt:Record<string,Date>={};
   if(date){startAt.gte=appointmentDateRange(date).start;startAt.lt=appointmentDateRange(date).end}
@@ -21,6 +21,7 @@ export async function listAppointments(request:Request,roles:UserRole[]){
     ...(Object.keys(startAt).length?{startAt}:{}),
     ...(effectiveStatus?{status:effectiveStatus}:{}),
     ...(doctorId?{doctorId}:{}),
+    ...(serviceId?{serviceId}:{}),
     ...(q?{OR:[{patientName:{contains:q,mode:"insensitive" as const}},{patientPhone:{contains:q}},{doctor:{name:{contains:q,mode:"insensitive" as const}}},{service:{name:{contains:q,mode:"insensitive" as const}}}]}:{}),
   };
   try{

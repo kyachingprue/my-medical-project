@@ -12,7 +12,7 @@ const links:Record<Role,DashboardLink[]>={
   patient:[
     {key:"overview",path:"",icon:LayoutDashboard},
     {key:"myBookings",path:"bookings",icon:Clock3},
-    {key:"profile",path:"profile",icon:Users},
+    {key:"profile",path:"profile",icon:UserRound},
     {key:"settings",path:"settings",icon:Settings},
   ],
   receptionist:[
@@ -23,6 +23,7 @@ const links:Record<Role,DashboardLink[]>={
     {key:"appointments",path:"appointments",icon:CalendarDays},
     {key:"phoneBooking",path:"phone-booking",icon:ClipboardList},
     {key:"patients",path:"patients",icon:Users},
+    {key:"profile",path:"profile",icon:UserRound},
     {key:"settings",path:"settings",icon:Settings},
   ],
   admin:[

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import {ThemeProvider} from "@/components/providers/theme-provider";
 
@@ -26,7 +27,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col"><ThemeProvider>{children}</ThemeProvider></body>
+      <body className="min-h-full flex flex-col">
+        <ThemeProvider>{children}</ThemeProvider>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(function(){var theme="system";try{theme=localStorage.getItem("theme")||theme}catch(error){}var dark=theme==="dark"||(theme==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",dark);document.documentElement.style.colorScheme=dark?"dark":"light"})()`}
+        </Script>
+      </body>
     </html>
   );
 }

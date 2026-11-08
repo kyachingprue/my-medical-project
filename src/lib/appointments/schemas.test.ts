@@ -25,6 +25,7 @@ describe("appointment request validation",()=>{
 
   it("applies safe appointment list defaults and status validation",()=>{
     assert.deepEqual(appointmentListQuerySchema.parse({}),{page:1,limit:20,period:"upcoming"});
+    assert.equal(appointmentListQuerySchema.parse({serviceId:"service-1"}).serviceId,"service-1");
     assert.equal(appointmentStatusSchema.safeParse({status:AppointmentStatus.NO_SHOW}).success,true);
     assert.equal(appointmentStatusSchema.safeParse({status:"PENDING"}).success,false);
   });

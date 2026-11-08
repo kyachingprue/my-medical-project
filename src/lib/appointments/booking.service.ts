@@ -110,12 +110,14 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
       const chairId=await lockAvailableChair(tx,slot.startAt,slot.endAt,id);
       if(!chairId)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
       const updated=await tx.appointment.update({where:{id},data:{doctorId:input.doctorId,serviceId:input.serviceId,chairId,startAt:slot.startAt,endAt:slot.endAt},include:appointmentDetails});
-      const notificationId=await createAppointmentNotification(tx,{
-        type:"APPOINTMENT_RESCHEDULED",
-        appointment:updated,
-        userId:updated.patientId,
-        recipientEmail:updated.patient?.email,
-      });
+      const notificationId=actor.role===UserRole.ADMIN||actor.role===UserRole.RECEPTIONIST
+        ?await createAppointmentNotification(tx,{
+          type:"APPOINTMENT_RESCHEDULED",
+          appointment:updated,
+          userId:updated.patientId,
+          recipientEmail:updated.patient?.email,
+        })
+        :null;
       await logUserAction(tx,actor.id,"RESCHEDULE","Appointment",id,{before:{doctorId:current.doctorId,serviceId:current.serviceId,startAt:current.startAt.toISOString(),endAt:current.endAt.toISOString()},after:{doctorId:updated.doctorId,serviceId:updated.serviceId,startAt:updated.startAt.toISOString(),endAt:updated.endAt.toISOString()}});
       return {appointment:updated,notificationId};
     },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:30_000});

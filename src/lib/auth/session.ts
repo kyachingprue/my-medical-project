@@ -14,9 +14,9 @@ async function findUserWithRetry(firebaseUid:string){
     try{
       return await prisma.user.findUnique({where:{firebaseUid}});
     }catch(error){
-      if(!(error instanceof Prisma.PrismaClientInitializationError)||error.errorCode!=="P1001"||retries>=3)throw error;
+      if(!(error instanceof Prisma.PrismaClientInitializationError)||error.errorCode!=="P1001"||retries>=4)throw error;
       retries+=1;
-      await new Promise(resolve=>setTimeout(resolve,retries*1000));
+      await new Promise(resolve=>setTimeout(resolve,Math.min(1000*2**(retries-1),8000)));
     }
   }
 }

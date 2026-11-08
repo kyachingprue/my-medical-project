@@ -1,4 +1,5 @@
 import {connection,NextResponse} from "next/server";
+import {Prisma} from "@prisma/client";
 import type {User,UserRole} from "@prisma/client";
 import {getCurrentUser} from "@/lib/auth/session";
 
@@ -13,6 +14,9 @@ export async function authorizeApi(roles:readonly UserRole[]):Promise<GuardResul
     return {user};
   }catch(error){
     console.error("API authorization failed:",error);
+    if(error instanceof Prisma.PrismaClientInitializationError&&error.errorCode==="P1001"){
+      return {response:apiError("DATABASE_UNAVAILABLE","The clinic database is temporarily unavailable. Please try again shortly.",503)};
+    }
     return {response:apiError("AUTHORIZATION_FAILED","Unable to verify your access right now.",500)};
   }
 }

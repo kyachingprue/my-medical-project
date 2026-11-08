@@ -4,8 +4,8 @@ import {CalendarDays,Clock3,Stethoscope} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link} from "@/i18n/navigation";
 import {canPatientCancelAppointment} from "@/lib/appointments/time";
-import {confirmAppointmentCancellation} from "./appointment-cancel-confirmation";
 import {useEffect,useState} from "react";
+import {toast} from "react-hot-toast";
 
 type Props={role:"patient"|"receptionist"|"admin";initialPeriod?:"upcoming"|"previous"|"cancelled"|"all";display?:"cards"|"table"};
 type Appointment={id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:string|number};chair:{id:string;name:string}};
@@ -21,6 +21,7 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
   const [now,setNow]=useState(0);
   const [loadedKey,setLoadedKey]=useState("");
   const [refreshCount,setRefreshCount]=useState(0);
+  const [busyId,setBusyId]=useState("");
   const [failure,setFailure]=useState<{key:string;message:string}|null>(null);
   const endpoint=role==="patient"?"/api/appointments/my":role==="admin"?"/api/admin/appointments":"/api/receptionist/appointments";
   const limit=display==="table"?20:100;
@@ -47,13 +48,19 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
   },[endpoint,period,page,limit,requestKey,t]);
 
   async function cancel(appointment:Appointment){
-    if(!await confirmAppointmentCancellation(t("confirmCancel"),t("keepAppointment"),t("confirmCancellation")))return;
+    if(busyId)return;
+    setBusyId(appointment.id);
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
       const body=await response.json() as Result;
       if(!response.ok)throw new Error(body.error?.message??t("cancelFailed"));
       setRefreshCount(count=>count+1);
-    }catch(cause){setFailure({key:requestKey,message:cause instanceof Error?cause.message:t("cancelFailed")})}
+      toast.success(t("cancelled"));
+    }catch(cause){
+      const message=cause instanceof Error?cause.message:t("cancelFailed");
+      setFailure({key:requestKey,message});
+      toast.error(message);
+    }finally{setBusyId("")}
   }
   const formatDate=(value:string)=>new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
 
@@ -72,7 +79,7 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
             <td><div className="appointment-history-actions">
               <Link className="text-link" href={detailHref(role,appointment.id)}>{t("details")}</Link>
               {appointment.status==="CONFIRMED"&&role==="patient"&&period==="upcoming"&&<Link className="text-link" href={`/patient/dashboard/bookings/${appointment.id}/reschedule`}>{t("reschedule")}</Link>}
-              {appointment.status==="CONFIRMED"&&(role!=="patient"||(now>0&&canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))))&&<button type="button" className="text-button" onClick={()=>cancel(appointment)}>{t("cancel")}</button>}
+              {appointment.status==="CONFIRMED"&&(role!=="patient"||(now>0&&canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))))&&<button type="button" className="appointment-action-button is-cancelled" disabled={busyId===appointment.id} onClick={()=>cancel(appointment)}>{busyId===appointment.id?t("saving"):t("cancel")}</button>}
               {role==="patient"&&appointment.status==="CONFIRMED"&&now>0&&new Date(appointment.startAt).getTime()>now&&!canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))&&<small className="appointment-cancel-hint">{ui("cancelWindowClosed")}</small>}
             </div></td>
           </tr>)}</tbody>
@@ -88,7 +95,7 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
       <div className="appointment-card-info"><Stethoscope size={16}/><div><strong>{appointment.doctor.name}</strong><small>{appointment.doctor.specialization}</small></div></div>
       <div className="appointment-card-info"><CalendarDays size={16}/><div><strong>{appointment.service.name}</strong><small>{appointment.service.durationMinutes} {t("minutes")} · ৳{Number(appointment.service.price).toLocaleString()}</small></div></div>
       {role!=="patient"&&<div className="appointment-card-info"><span className="patient-monogram">{appointment.patientName.slice(0,1).toUpperCase()}</span><div><strong>{appointment.patientName}</strong><small>{appointment.patientPhone??t("noPhone")}</small></div></div>}
-      <div className="appointment-card-footer"><Link className="text-link" href={detailHref(role,appointment.id)}>{t("details")} ↗</Link>{appointment.status==="CONFIRMED"&&<div className="appointment-card-actions">{role==="patient"&&period==="upcoming"&&<Link className="text-link" href={`/patient/dashboard/bookings/${appointment.id}/reschedule`}>{t("reschedule")}</Link>}{(role!=="patient"||(now>0&&canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))))&&<button type="button" className="text-button" onClick={()=>cancel(appointment)}>{t("cancel")}</button>}{role==="patient"&&now>0&&new Date(appointment.startAt).getTime()>now&&!canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))&&<small className="appointment-cancel-hint">{ui("cancelWindowClosed")}</small>}</div>}</div>
+      <div className="appointment-card-footer"><Link className="text-link" href={detailHref(role,appointment.id)}>{t("details")} ↗</Link>{appointment.status==="CONFIRMED"&&<div className="appointment-card-actions">{role==="patient"&&period==="upcoming"&&<Link className="text-link" href={`/patient/dashboard/bookings/${appointment.id}/reschedule`}>{t("reschedule")}</Link>}{(role!=="patient"||(now>0&&canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))))&&<button type="button" className="appointment-action-button is-cancelled" disabled={busyId===appointment.id} onClick={()=>cancel(appointment)}>{busyId===appointment.id?t("saving"):t("cancel")}</button>}{role==="patient"&&now>0&&new Date(appointment.startAt).getTime()>now&&!canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))&&<small className="appointment-cancel-hint">{ui("cancelWindowClosed")}</small>}</div>}</div>
     </article>)}</div>}
   </section>;
 }

@@ -3,7 +3,7 @@ import {Suspense} from "react";
 import {useTranslations} from "next-intl";
 import {DashboardLoading} from "@/components/dashboards/dashboard-loading";
 import {DashboardSubpage} from "@/components/dashboards/dashboard-subpage";
-import {ProfileEditor} from "@/components/auth/profile-editor";
+import {AccountProfileEditor} from "@/components/auth/account-profile-editor";
 import {AppointmentList} from "@/components/appointments/appointment-list";
 import {requireRole} from "@/lib/auth/authorize";
 
@@ -24,7 +24,19 @@ async function PatientDashboardSectionContent({params}: {params: Promise<{locale
   const user = await requireRole("PATIENT", locale);
   const key = sectionKeys[section[0]];
   if (!key || section.length !== 1) notFound();
-  if (section[0] === "profile") return <ProfileEditor initialName={user.name} initialPhone={user.phone ?? ""} emailVerified={user.emailVerified} />;
+  if (section[0] === "profile") {
+    const dateFormat=new Intl.DateTimeFormat(locale==="bn"?"bn-BD":"en-GB",{timeZone:"Asia/Dhaka",dateStyle:"medium"});
+    return <AccountProfileEditor
+      initialName={user.name}
+      email={user.email}
+      initialPhone={user.phone??""}
+      initialImage={user.image}
+      emailVerified={user.emailVerified}
+      joined={dateFormat.format(user.createdAt)}
+      updated={dateFormat.format(user.updatedAt)}
+      role="PATIENT"
+    />;
+  }
   return <PatientSectionContent translationKey={key} />;
 }
 

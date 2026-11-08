@@ -21,6 +21,7 @@ Copy `.env.example` to `.env` and replace placeholders:
 | `FIREBASE_PROJECT_ID` | Firebase Admin project identifier (server only) |
 | `FIREBASE_CLIENT_EMAIL` | Service-account email (server only) |
 | `FIREBASE_PRIVATE_KEY` | Service-account private key (server only); `\\n` sequences are expanded by the Admin initialization |
+| `IMGBB_API_KEY` | Optional ImgBB API key for administrator profile photo uploads (server only) |
 | `RESEND_API_KEY` | Optional Resend API secret (server only) |
 | `EMAIL_FROM` | Sender identity verified by Resend |
 | `APP_URL` | Canonical application URL used in email links |
@@ -30,6 +31,8 @@ Copy `.env.example` to `.env` and replace placeholders:
 | `SEED_RECEPTIONIST_UID` | Optional Firebase UID of a trusted Receptionist provisioned outside public registration |
 
 Do not add real credentials to `.env.example`, source control, or client-exposed `NEXT_PUBLIC_` variables. Keep development and production databases and Firebase projects separate.
+
+Neon connection URLs may include `channel_binding=require`, which Prisma's PostgreSQL connector cannot use. The runtime Prisma client removes that parameter while retaining TLS settings such as `sslmode=require`.
 
 ## Firebase
 
@@ -41,6 +44,8 @@ Do not add real credentials to `.env.example`, source control, or client-exposed
 6. Never download or commit a service-account JSON file. For a multiline private key stored as an environment variable, preserve line breaks or use escaped `\\n`.
 
 The actual Admin variable names consumed in this repository are `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
+
+To enable administrator profile photo uploads, create an ImgBB API key and configure it as the server-only `IMGBB_API_KEY`. Uploads accept JPEG, PNG, and WebP files up to 5 MB. Without the key, profile editing and email verification remain available, but photo uploads are disabled.
 
 ## Database and seed data
 

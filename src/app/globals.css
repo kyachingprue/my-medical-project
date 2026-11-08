@@ -185,6 +185,21 @@ body{font-family:var(--font-geist-sans),Arial,"Nirmala UI",sans-serif}
 .dashboard-notification-popover>a{display:block;padding:12px 4px 2px;color:var(--teal);font-size:11px;font-weight:700}
 .notification-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .notification-summary .dashboard-card{min-width:0}
+.notification-page-header{margin-bottom:2px}
+.notification-metric{position:relative;display:grid;gap:8px;min-width:0;min-height:145px;padding:18px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(145deg,color-mix(in srgb,var(--teal) 5%,var(--surface)),var(--surface) 72%);box-shadow:0 8px 26px color-mix(in srgb,var(--text) 4%,transparent)}
+.notification-metric-icon{position:absolute;top:15px;right:15px;display:grid;width:36px;height:36px;place-items:center;border-radius:11px;background:color-mix(in srgb,var(--teal) 11%,var(--surface));color:var(--teal)}
+.notification-metric-label{max-width:calc(100% - 42px);color:var(--muted);font-size:11px;font-weight:700}
+.notification-metric>strong{font-size:clamp(25px,3vw,34px);line-height:1;letter-spacing:-.04em}
+.notification-metric>small{color:var(--muted);font-size:10px;line-height:1.45}
+.notification-metric.is-pending .notification-metric-icon{background:color-mix(in srgb,#d97706 11%,var(--surface));color:#a66b25}
+.notification-metric.is-sent .notification-metric-icon{background:color-mix(in srgb,#16a34a 10%,var(--surface));color:#36794f}
+.notification-metric.is-failed .notification-metric-icon{background:color-mix(in srgb,#dc2626 9%,var(--surface));color:#a95049}
+.notification-workflow-note{display:flex;align-items:flex-start;gap:12px;padding:15px 17px;border:1px solid color-mix(in srgb,var(--teal) 18%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--teal) 5%,var(--surface))}
+.notification-workflow-note>span{display:grid;flex:0 0 34px;width:34px;height:34px;place-items:center;border-radius:10px;background:color-mix(in srgb,var(--teal) 13%,var(--surface));color:var(--teal)}
+.notification-workflow-note p{display:grid;gap:4px;margin:0}
+.notification-workflow-note strong{font-size:12px}
+.notification-workflow-note small{color:var(--muted);font-size:11px;line-height:1.55}
+.appointment-email-note{margin:0;padding:11px 13px;border:1px solid color-mix(in srgb,var(--teal) 18%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--teal) 5%,var(--surface));color:var(--muted);font-size:12px;line-height:1.6}
 .notification-table{min-width:1250px}
 .notification-pagination{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px}
 .notification-pagination>span{color:var(--muted);font-size:11px}
@@ -214,3 +229,21 @@ body{font-family:var(--font-geist-sans),Arial,"Nirmala UI",sans-serif}
 .button-danger:disabled{opacity:.55;cursor:wait}
 .notification-table td:last-child{min-width:140px}
 @media(max-width:640px){.admin-profile-hero{align-items:flex-start;flex-wrap:wrap;gap:15px}.admin-profile-avatar{flex-basis:76px;width:76px;height:76px}.admin-profile-verification{margin-left:0}.admin-profile-details{grid-template-columns:minmax(0,1fr);padding-bottom:18px}}
+.appointment-action-button{display:inline-flex;align-items:center;justify-content:center;min-height:29px;padding:5px 9px;border:1px solid transparent;border-radius:7px;font-size:10px;font-weight:700;line-height:1.2;white-space:nowrap;transition:transform .15s ease,background-color .15s ease,border-color .15s ease,opacity .15s ease}
+.appointment-action-button.is-completed{border-color:color-mix(in srgb,#16a34a 18%,var(--line));background:color-mix(in srgb,#16a34a 9%,var(--surface));color:#277246}
+.appointment-action-button.is-no-show{border-color:color-mix(in srgb,#d97706 18%,var(--line));background:color-mix(in srgb,#d97706 9%,var(--surface));color:#9a5d16}
+.appointment-action-button.is-cancelled{border-color:color-mix(in srgb,#dc2626 18%,var(--line));background:color-mix(in srgb,#dc2626 8%,var(--surface));color:#a3423a}
+.appointment-action-button:not(:disabled):hover{filter:saturate(1.15);transform:translateY(-1px)}
+.appointment-action-button:not(:disabled):active{transform:scale(.94)}
+.appointment-action-button:disabled{cursor:wait;opacity:.5}
+.appointment-action-button:focus-visible,.admin-profile-avatar:focus-visible{outline:3px solid color-mix(in srgb,var(--teal) 45%,transparent);outline-offset:3px}
+.admin-profile-avatar{padding:0;border:4px solid var(--surface);cursor:pointer;transition:transform .16s ease,opacity .16s ease}
+.admin-profile-avatar:not(:disabled):hover{transform:scale(1.03)}
+.admin-profile-avatar:disabled{cursor:wait;opacity:.65}
+.admin-profile-camera{position:absolute;right:0;bottom:0;display:grid;width:30px;height:30px;place-items:center;border:2px solid var(--surface);border-radius:50%;background:var(--teal);color:var(--bg);box-shadow:0 3px 10px rgba(20,50,45,.18);transition:transform .16s ease}
+.admin-profile-avatar:not(:disabled):hover .admin-profile-camera{transform:scale(1.08)}
+.dark .appointment-action-button.is-completed{color:#8ed6a9}
+.dark .appointment-action-button.is-no-show{color:#f3c078}
+.dark .appointment-action-button.is-cancelled{color:#f2a09a}
+@media(max-width:650px){.reception-toolbar .appointment-filter,.reception-toolbar .appointment-status-filter{flex:1 1 145px;min-width:0}.reception-toolbar .appointment-tabs{flex:1 1 100%;justify-content:center}.reception-toolbar .appointment-search,.reception-toolbar>.button{flex:1 1 100%}.appointment-row-actions{gap:6px}}
+@media(prefers-reduced-motion:reduce){.appointment-action-button,.admin-profile-avatar,.admin-profile-camera{transition:none}}

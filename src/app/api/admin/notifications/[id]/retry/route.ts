@@ -12,7 +12,12 @@ export async function PATCH(_request: Request, {params}: Context) {
   const {id} = await params;
   const result = await retryNotification(id);
   if (!result) return apiError("NOT_FOUND","Notification record not found.",404);
-  if ("error" in result) return apiError("NOTIFICATION_RETRY_REJECTED",result.error,result.status);
+  if ("error" in result && typeof result.status === "number") {
+    return apiError("NOTIFICATION_RETRY_REJECTED",result.error,result.status);
+  }
   await prisma.$transaction(tx=>logUserAction(tx,access.user.id,"RETRY","Notification",id));
+  if (result.status === "failed") {
+    return apiError("NOTIFICATION_DELIVERY_FAILED",result.error,502);
+  }
   return Response.json({data: result});
 }

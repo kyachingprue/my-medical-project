@@ -3,8 +3,8 @@
 import {CalendarDays,Clock3,MapPin,Stethoscope} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link,useRouter} from "@/i18n/navigation";
-import {confirmAppointmentCancellation} from "./appointment-cancel-confirmation";
 import {useState} from "react";
+import {toast} from "react-hot-toast";
 
 type Props={role:"patient"|"receptionist"|"admin";appointment:{id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:number|string};chair:{id:string;name:string}}};
 export function AppointmentDetails({role,appointment}:Props){
@@ -15,18 +15,22 @@ export function AppointmentDetails({role,appointment}:Props){
   const dateFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"full"});
   const timeFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",hour:"numeric",minute:"2-digit"});
   async function cancel(){
-    if(!await confirmAppointmentCancellation(t("confirmCancel"),t("keepAppointment"),t("confirmCancellation")))return;
     setBusy(true);setError("");
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
       const result=await response.json() as {error?:{message?:string}};
       if(!response.ok)throw new Error(result.error?.message??t("cancelFailed"));
+      toast.success(t("cancelled"));
       router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:t("cancelFailed"))}
+    }catch(cause){
+      const message=cause instanceof Error?cause.message:t("cancelFailed");
+      setError(message);
+      toast.error(message);
+    }
     finally{setBusy(false)}
   }
   const listUrl=role==="patient"?"/patient/dashboard/bookings":role==="admin"?"/admin/dashboard/appointments":"/receptionist/dashboard/appointments";
-  const rescheduleUrl=role==="patient"?`/patient/dashboard/bookings/${appointment.id}/reschedule`:`/receptionist/dashboard/appointments/${appointment.id}/reschedule`;
+  const rescheduleUrl=role==="patient"?`/patient/dashboard/bookings/${appointment.id}/reschedule`:role==="admin"?`/admin/dashboard/appointments/${appointment.id}/reschedule`:`/receptionist/dashboard/appointments/${appointment.id}/reschedule`;
   return <section className="appointment-details">
     <Link className="back-link" href={listUrl}>← {t("backToAppointments")}</Link>
     <article className="appointment-detail-card">

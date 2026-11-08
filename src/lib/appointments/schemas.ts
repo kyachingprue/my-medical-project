@@ -30,6 +30,7 @@ export const appointmentListQuerySchema=z.object({
   to:appointmentDateSchema.optional(),
   status:z.enum(AppointmentStatus).optional(),
   doctorId:z.string().min(1).optional(),
+  serviceId:z.string().min(1).optional(),
   q:z.string().trim().max(120).optional(),
   period:z.enum(["upcoming","previous","cancelled","all"]).default("upcoming"),
 });

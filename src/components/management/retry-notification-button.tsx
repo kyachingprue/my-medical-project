@@ -2,24 +2,24 @@
 
 import {useState} from "react";
 import {useRouter} from "next/navigation";
+import {toast} from "react-hot-toast";
 
 export function RetryNotificationButton({id}:{id:string}){
   const router=useRouter();
   const [busy,setBusy]=useState(false);
-  const [error,setError]=useState("");
   async function retry(){
     setBusy(true);
-    setError("");
     try{
       const response=await fetch(`/api/admin/notifications/${id}/retry`,{method:"PATCH"});
       const result=await response.json() as {error?:{message?:string}};
       if(!response.ok)throw new Error(result.error?.message??"Could not retry this notification.");
-      router.refresh();
+      toast.success("Patient email sent successfully");
     }catch(cause){
-      setError(cause instanceof Error?cause.message:"Could not retry this notification.");
+      toast.error(cause instanceof Error?cause.message:"Could not retry this notification.");
     }finally{
       setBusy(false);
+      router.refresh();
     }
   }
-  return <div><button className="button button-outline" type="button" onClick={retry} disabled={busy}>{busy?"Retrying…":"Retry"}</button>{error?<small role="alert">{error}</small>:null}</div>;
+  return <button className="button button-outline" type="button" onClick={retry} disabled={busy}>{busy?"Retrying…":"Retry"}</button>;
 }
