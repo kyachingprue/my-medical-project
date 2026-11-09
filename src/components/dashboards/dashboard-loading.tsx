@@ -18,7 +18,7 @@ export function DashboardLoading({kind="dashboard",label="Loading"}:{kind?:Loadi
   }
 
   return <section className="grid w-full min-w-0 gap-[18px]" role="status" aria-label={label} aria-busy="true">
-    <span className="sr-only">{label}</span>
+    <span className="tw-sr-only absolute w-[1px] h-[1px] p-[0] m-[-1px] overflow-hidden [clip:rect(0,0,0,0)] whitespace-nowrap [border:0]">{label}</span>
     <div className="mb-[3px] grid gap-[10px]" aria-hidden="true">
       <i className={`${shimmer} h-[7px] w-[108px] opacity-70`}/>
       <i className={`${shimmer} h-[25px] w-[min(310px,75%)]`}/>

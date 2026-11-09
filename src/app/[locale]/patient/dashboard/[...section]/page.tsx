@@ -42,7 +42,7 @@ async function PatientDashboardSectionContent({params}: {params: Promise<{locale
 
 function PatientSectionContent({translationKey}: {translationKey: string}) {
   const t = useTranslations("dashboard");
-  if (translationKey === "history") return <section className="dashboard-subpage">
+  if (translationKey === "history") return <section className="tw-dashboard-subpage min-h-[380px] p-[25px] [background:var(--surface)] [border:1px_solid_var(--line)] rounded-[12px] [&_h1]:block [&_h1]:text-center [&>p]:block [&>p]:text-center [&_h1]:text-[length:25px] [&_h1]:m-[9px] [&>p]:max-w-[length:450px] [&>p]:m-[0_auto] [&>p]:[color:var(--muted)] [&>p]:text-[length:11px] [&>p]:leading-[1.7]">
     <header className="dashboard-subpage-header"><h1>{t("history")}</h1></header>
     <AppointmentList role="patient" display="table" initialPeriod="all"/>
   </section>;

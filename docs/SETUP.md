@@ -5,7 +5,7 @@
 - Node.js supported by the installed Next.js 16 version
 - A development Neon/PostgreSQL database
 - A Firebase project with Email/Password and Google providers enabled
-- Optional Resend account and verified sending domain for email delivery
+- Optional Brevo account with a verified sender for email delivery
 
 ## Environment
 
@@ -22,8 +22,8 @@ Copy `.env.example` to `.env` and replace placeholders:
 | `FIREBASE_CLIENT_EMAIL` | Service-account email (server only) |
 | `FIREBASE_PRIVATE_KEY` | Service-account private key (server only); `\\n` sequences are expanded by the Admin initialization |
 | `IMGBB_API_KEY` | Optional ImgBB API key for administrator profile photo uploads (server only) |
-| `RESEND_API_KEY` | Optional Resend API secret (server only) |
-| `EMAIL_FROM` | Sender identity verified by Resend |
+| `BREVO_API_KEY` | Optional Brevo API key (server only) |
+| `EMAIL_FROM` | Sender identity verified in Brevo, e.g. `SmileCraft <care@example.com>` |
 | `APP_URL` | Canonical application URL used in email links |
 | `CLINIC_NAME` | Email clinic display name |
 | `CRON_SECRET` | Random bearer secret authorizing Vercel Cron to process pending outbox notifications |
@@ -31,6 +31,12 @@ Copy `.env.example` to `.env` and replace placeholders:
 | `SEED_RECEPTIONIST_UID` | Optional Firebase UID of a trusted Receptionist provisioned outside public registration |
 
 Do not add real credentials to `.env.example`, source control, or client-exposed `NEXT_PUBLIC_` variables. Keep development and production databases and Firebase projects separate.
+
+## Brevo email delivery
+
+1. Create a Brevo API key and configure it as the server-only `BREVO_API_KEY` in `.env` and your deployment environment.
+2. Verify a sender in Brevo, then set `EMAIL_FROM` to that address. The value may be a plain address or `SmileCraft <address>`.
+3. Restart the application after changing environment variables. Email delivery will be marked failed until both settings are valid.
 
 Neon connection URLs may include `channel_binding=require`, which Prisma's PostgreSQL connector cannot use. The runtime Prisma client removes that parameter while retaining TLS settings such as `sslmode=require`.
 

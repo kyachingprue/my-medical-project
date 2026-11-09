@@ -193,7 +193,7 @@ model NotificationLog {
   recipientEmail String
   subject        String
   status         NotificationStatus @default(PENDING)
-  provider       String            @default("RESEND")
+  provider       String            @default("BREVO")
   providerMessage String?
   attempts       Int               @default(0)
   sentAt         DateTime?

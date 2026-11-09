@@ -29,8 +29,8 @@ export function ServiceForm({initial}:{initial?:ServiceValues}){
       router.refresh();
     }catch(cause){setError(cause instanceof Error?cause.message:t("saveFailed"))}
   }
-  return <form className="management-form" onSubmit={handleSubmit(submit)}>
-    <div className="management-form-grid">
+  return <form className="tw-management-form grid gap-[18px]" onSubmit={handleSubmit(submit)}>
+    <div className="tw-management-form-grid grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[16px] [@media(max-width:650px)]:grid-cols-[1fr]">
       <ManagementField label={t("serviceName")} error={errors.name?.message}><input {...register("name")}/></ManagementField>
       <ManagementField label={t("slug")} error={errors.slug?.message}><input {...register("slug")}/></ManagementField>
       <ManagementField label={t("durationMinutes")} error={errors.durationMinutes?.message}><input type="number" min="5" max="480" {...register("durationMinutes",{valueAsNumber:true})}/></ManagementField>
@@ -38,8 +38,8 @@ export function ServiceForm({initial}:{initial?:ServiceValues}){
       <ManagementField label={t("image")} error={errors.image?.message}><input type="url" {...register("image")}/></ManagementField>
       <ManagementField label={t("description")} error={errors.description?.message} full><textarea rows={5} {...register("description")}/></ManagementField>
     </div>
-    {initial?.id&&<label className="management-checkbox"><input type="checkbox" {...register("isActive")}/>{t("active")}</label>}
-    {error&&<p className="management-error" role="alert">{error}</p>}
-    <button className="button button-primary" disabled={isSubmitting}>{isSubmitting?t("saving"):t("save")}</button>
+    {initial?.id&&<label className="tw-management-checkbox flex items-center gap-[8px] [color:var(--muted)] text-[length:12px] [&_input]:[accent-color:var(--teal)]"><input type="checkbox" {...register("isActive")}/>{t("active")}</label>}
+    {error&&<p className="tw-management-error m-[0] [color:#b43e37] text-[length:12px]" role="alert">{error}</p>}
+    <button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-primary [background:var(--teal)] [color:white] shadow-[0_7px_18px_color-mix(in_srgb,var(--teal)_25%,transparent)] [&:hover]:[background:var(--teal-dark)] [&_span]:text-[length:17px]" disabled={isSubmitting}>{isSubmitting?t("saving"):t("save")}</button>
   </form>;
 }

@@ -153,58 +153,69 @@ async function deliverNotification(id: string) {
     const message = "Appointment details or the patient's email address are unavailable.";
     await prisma.notificationLog.update({
       where: {id},
-      data: {status: NotificationStatus.FAILED, providerMessage: message, attempts: {increment: 1}},
+      data: {status: NotificationStatus.FAILED, provider:"BREVO", providerMessage: message, attempts: {increment: 1}},
     });
     return {status: "failed" as const, id, error: message};
   }
 
   const payload = buildAppointmentEmail(record.type as AppointmentNotificationType, appointment);
-  const key = process.env.RESEND_API_KEY;
+  const key = process.env.BREVO_API_KEY;
   if (!key) {
-    const message = "RESEND_API_KEY is not configured.";
+    const message = "BREVO_API_KEY is not configured.";
     await prisma.notificationLog.update({
       where: {id},
-      data: {status: NotificationStatus.FAILED, providerMessage: message, attempts: {increment: 1}},
+      data: {status: NotificationStatus.FAILED, provider:"BREVO", providerMessage: message, attempts: {increment: 1}},
     });
     return {status: "failed" as const, id, error: message};
   }
 
   const from = process.env.EMAIL_FROM?.trim();
   if (!from) {
-    const message = "EMAIL_FROM is not configured. Set it to a sender address verified by Resend.";
+    const message = "EMAIL_FROM is not configured. Set it to a sender address verified in Brevo.";
     await prisma.notificationLog.update({
       where: {id},
-      data: {status: NotificationStatus.FAILED, providerMessage: message, attempts: {increment: 1}},
+      data: {status: NotificationStatus.FAILED, provider:"BREVO", providerMessage: message, attempts: {increment: 1}},
     });
     return {status: "failed" as const, id, error: message};
   }
 
+  const senderMatch=from.match(/^(.*?)\s*<([^<>]+)>$/);
+  const senderEmail=(senderMatch?.[2]??from).trim();
+  const senderName=senderMatch?.[1].trim().replace(/^["']|["']$/g,"")||clinicName;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)){
+    const message="EMAIL_FROM must contain a valid sender email address verified in Brevo.";
+    await prisma.notificationLog.update({
+      where:{id},
+      data:{status:NotificationStatus.FAILED,provider:"BREVO",providerMessage:message,attempts:{increment:1}},
+    });
+    return {status:"failed" as const,id,error:message};
+  }
+
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${key}`,
+        "api-key": key,
         "Content-Type": "application/json",
-        "Idempotency-Key": record.idempotencyKey,
       },
       body: JSON.stringify({
-        from,
-        to: [record.recipientEmail],
+        sender: {email:senderEmail,name:senderName},
+        to: [{email:record.recipientEmail}],
         subject: payload.subject,
-        html: payload.html,
-        text: payload.text,
+        htmlContent: payload.html,
+        textContent: payload.text,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(await getResendFailureMessage(response));
+      throw new Error(await getBrevoFailureMessage(response));
     }
 
     await prisma.notificationLog.update({
       where: {id},
       data: {
         status: NotificationStatus.SENT,
-        provider: "RESEND",
+        provider: "BREVO",
         providerMessage: null,
         attempts: {increment: 1},
         sentAt: new Date(),
@@ -212,14 +223,14 @@ async function deliverNotification(id: string) {
     });
     return {status: "sent" as const, id};
   } catch (error) {
-    const message = error instanceof Error && error.message.startsWith("Resend rejected the email request")
+    const message = error instanceof Error && error.message.startsWith("Brevo rejected the email request")
       ? error.message
-      : "Could not reach Resend. Check outbound network access and try again.";
+      : "Could not reach Brevo. Check outbound network access and try again.";
     await prisma.notificationLog.update({
       where: {id},
       data: {
         status: NotificationStatus.FAILED,
-        provider: "RESEND",
+        provider: "BREVO",
         providerMessage: message,
         attempts: {increment: 1},
       },
@@ -228,8 +239,8 @@ async function deliverNotification(id: string) {
   }
 }
 
-async function getResendFailureMessage(response: Response) {
-  const fallback = `Resend rejected the email request (HTTP ${response.status}).`;
+async function getBrevoFailureMessage(response: Response) {
+  const fallback = `Brevo rejected the email request (HTTP ${response.status}).`;
   let payload: unknown;
   try {
     payload = await response.json();
@@ -242,7 +253,7 @@ async function getResendFailureMessage(response: Response) {
   }
 
   const message = payload.message.trim().slice(0, 500);
-  return message ? `Resend rejected the email request: ${message}` : fallback;
+  return message ? `Brevo rejected the email request: ${message}` : fallback;
 }
 
 function toNotificationType(value: AppointmentNotificationType): NotificationType {

@@ -7,7 +7,7 @@
 - `src/lib/auth` contains session verification and role-based page guards.
 - `src/lib/appointments` contains Dhaka-time conversion, available-slot generation, validation, analytics, and transactional booking workflows.
 - `src/lib/management` contains schemas, audit helpers, and doctor locking shared by booking and leave writes.
-- `src/lib/notifications` contains the Prisma-backed outbox and Resend delivery.
+- `src/lib/notifications` contains the Prisma-backed outbox and Brevo delivery.
 - `prisma/schema.prisma` and sequential SQL migrations define the PostgreSQL data model.
 
 ## Authentication and authorization
@@ -20,7 +20,7 @@ Appointments reference patient (optional for guests), doctor, service, and chair
 
 ## Notifications and audit
 
-An eligible appointment change writes its notification record within the same database transaction. Email delivery is scheduled after the response, so a slow provider cannot delay or fail the appointment API response. Provider failure is recorded and does not roll back appointment data. Resend receives the outbox idempotency key. A protected Vercel Cron route polls pending records as recovery for interrupted delivery attempts. Admins can inspect failures and retry them up to the configured attempt limit.
+An eligible appointment change writes its notification record within the same database transaction. Email delivery is scheduled after the response, so a slow provider cannot delay or fail the appointment API response. Provider failure is recorded and does not roll back appointment data. A protected Vercel Cron route polls pending records as recovery for interrupted delivery attempts. Admins can inspect failures and retry them up to the configured attempt limit.
 
 Audit records are written server-side in the same transaction as covered appointment and management changes. Admin audit reads are paginated and filtered. Ordinary APIs do not expose audit mutations.
 
