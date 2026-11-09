@@ -6,13 +6,15 @@ import {Link} from "@/i18n/navigation";
 import {canPatientCancelAppointment} from "@/lib/appointments/time";
 import {useEffect,useState} from "react";
 import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 type Props={role:"patient"|"receptionist"|"admin";initialPeriod?:"upcoming"|"previous"|"cancelled"|"all";display?:"cards"|"table"};
-type Appointment={id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:string|number};chair:{id:string;name:string}};
-type Result={data:Appointment[];pagination:{page:number;limit:number;total:number;totalPages:number};error?:{message?:string}};
+type Appointment={id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;videoRoomName:string|null;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:string|number;isOnlineConsultation?:boolean};chair:{id:string;name:string}};
+type Result={data:Appointment[];pagination:{page:number;limit:number;total:number;totalPages:number};error?:{code?:string}};
 
 export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:Props){
   const t=useTranslations("appointments");
+  const feedback=useTranslations("feedback");
   const ui=useTranslations("appointmentUi");
   const [period,setPeriod]=useState(initialPeriod);
   const [page,setPage]=useState(1);
@@ -58,27 +60,33 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
     let active=true;
     fetch(`${endpoint}?period=${period}&page=${page}&limit=${limit}`,{cache:"no-store"}).then(async response=>{
       const body=await response.json() as Result;
-      if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok)throw new Error(t("loadFailed"));
       if(active&&page>Math.max(1,body.pagination.totalPages)){setPage(Math.max(1,body.pagination.totalPages));return}
       if(active){setAppointments(body.data);setPagination(body.pagination);setFailure(null)}
-    }).catch(cause=>{if(active)setFailure({key:requestKey,message:cause instanceof Error?cause.message:t("loadFailed")})}).finally(()=>{if(active)setLoadedKey(requestKey)});
+    }).catch(()=>{if(active)setFailure({key:requestKey,message:t("loadFailed")})}).finally(()=>{if(active)setLoadedKey(requestKey)});
     return ()=>{active=false};
   },[endpoint,period,page,limit,requestKey,t]);
 
   async function cancel(appointment:Appointment){
     if(busyId)return;
     setBusyId(appointment.id);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
       const body=await response.json() as Result;
-      if(!response.ok)throw new Error(body.error?.message??t("cancelFailed"));
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,body.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("cancelFailed"),
+        }));
+        return;
+      }
       setRefreshCount(count=>count+1);
-      toast.success(t("cancelled"));
-    }catch(cause){
-      const message=cause instanceof Error?cause.message:t("cancelFailed");
-      setFailure({key:requestKey,message});
-      toast.error(message);
-    }finally{setBusyId("")}
+      toast.success(feedback("appointmentCancelled"));
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast);setBusyId("")}
   }
   const formatDate=(value:string)=>new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
 
@@ -113,6 +121,7 @@ export function AppointmentList({role,initialPeriod="upcoming",display="cards"}:
       <div className="tw-appointment-card-info flex items-center gap-[10px] m-[12px_0] [color:var(--teal)] [&>div]:grid [&>div]:gap-[3px] [&>div]:min-w-[length:0] [&>div]:[color:var(--text)] [&_strong]:text-[length:11px] [&_small]:[color:var(--muted)] [&_small]:text-[length:10px]"><Stethoscope size={16}/><div><strong>{appointment.doctor.name}</strong><small>{appointment.doctor.specialization}</small></div></div>
       <div className="tw-appointment-card-info flex items-center gap-[10px] m-[12px_0] [color:var(--teal)] [&>div]:grid [&>div]:gap-[3px] [&>div]:min-w-[length:0] [&>div]:[color:var(--text)] [&_strong]:text-[length:11px] [&_small]:[color:var(--muted)] [&_small]:text-[length:10px]"><CalendarDays size={16}/><div><strong>{appointment.service.name}</strong><small>{appointment.service.durationMinutes} {t("minutes")} · ৳{Number(appointment.service.price).toLocaleString()}</small></div></div>
       {role!=="patient"&&<div className="tw-appointment-card-info flex items-center gap-[10px] m-[12px_0] [color:var(--teal)] [&>div]:grid [&>div]:gap-[3px] [&>div]:min-w-[length:0] [&>div]:[color:var(--text)] [&_strong]:text-[length:11px] [&_small]:[color:var(--muted)] [&_small]:text-[length:10px]"><span className="tw-patient-monogram grid [place-items:center] flex-[0_0_27px] h-[27px] rounded-[50%] [background:color-mix(in_srgb,var(--teal)_12%,transparent)] text-[length:11px] font-bold">{appointment.patientName.slice(0,1).toUpperCase()}</span><div><strong>{appointment.patientName}</strong><small>{appointment.patientPhone??t("noPhone")}</small></div></div>}
+      {role==="patient"&&appointment.status==="CONFIRMED"&&appointment.service.isOnlineConsultation&&appointment.videoRoomName&&now>=new Date(appointment.startAt).getTime()-15*60_000&&now<=new Date(appointment.endAt).getTime()+30*60_000&&<a className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[var(--teal)] px-3 text-xs font-semibold text-white" href={`https://meet.jit.si/${appointment.videoRoomName}`} target="_blank" rel="noopener noreferrer">{t("joinVideo")}</a>}
       <div className="tw-appointment-card-footer flex items-center justify-between gap-[10px] mt-[15px] pt-[12px] [border-top:1px_solid_var(--line)] [@media(max-width:650px)]:items-start [@media(max-width:650px)]:flex-col"><Link className="tw-text-link inline-flex items-center gap-[8px] [color:var(--teal)] text-[length:12px] font-bold [@media(max-width:760px)]:[.tw-section-heading_&]:text-[length:10px] [@media(max-width:760px)]:[.tw-section-heading_&]:mt-[25px] [@media(max-width:760px)]:[.tw-section-heading_&]:whitespace-nowrap text-[length:10px] no-underline" href={detailHref(role,appointment.id)}>{t("details")} ↗</Link>{appointment.status==="CONFIRMED"&&<div className="tw-appointment-card-actions flex items-center gap-[8px] [flex-wrap:wrap] justify-end [@media(max-width:650px)]:justify-start">{role==="patient"&&period==="upcoming"&&<Link className="tw-text-link inline-flex items-center gap-[8px] [color:var(--teal)] text-[length:12px] font-bold [@media(max-width:760px)]:[.tw-section-heading_&]:text-[length:10px] [@media(max-width:760px)]:[.tw-section-heading_&]:mt-[25px] [@media(max-width:760px)]:[.tw-section-heading_&]:whitespace-nowrap text-[length:10px] no-underline" href={`/patient/dashboard/bookings/${appointment.id}/reschedule`}>{t("reschedule")}</Link>}{(role!=="patient"||(now>0&&canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))))&&<button type="button" className="tw-appointment-action-button inline-flex items-center justify-center min-h-[29px] p-[5px_9px] [border:1px_solid_transparent] rounded-[7px] text-[length:10px] font-bold leading-[1.2] whitespace-nowrap [transition:transform_.15s_ease,background-color_.15s_ease,border-color_.15s_ease,opacity_.15s_ease] [&:not(:disabled):hover]:[filter:saturate(1.15)] [&:not(:disabled):hover]:[transform:translateY(-1px)] [&:not(:disabled):active]:[transform:scale(.94)] [&:disabled]:cursor-wait [&:disabled]:opacity-[.5] [&:focus-visible]:[outline:3px_solid_color-mix(in_srgb,var(--teal)_45%,transparent)] [&:focus-visible]:[outline-offset:3px] [@media(prefers-reduced-motion:reduce)]:[transition:none] tw-is-cancelled [.tw-appointment-action-button&]:border-[color:color-mix(in_srgb,#dc2626_18%,var(--line))] [.tw-appointment-action-button&]:[background:color-mix(in_srgb,#dc2626_8%,var(--surface))] [.tw-appointment-action-button&]:[color:#a3423a] [.dark_.tw-appointment-action-button&]:[color:#f2a09a]" disabled={busyId===appointment.id} onClick={()=>cancel(appointment)}>{busyId===appointment.id?t("saving"):t("cancel")}</button>}{role==="patient"&&now>0&&new Date(appointment.startAt).getTime()>now&&!canPatientCancelAppointment(new Date(appointment.startAt),new Date(now))&&<small className="tw-appointment-cancel-hint max-w-[length:175px] [color:var(--muted)] text-[length:10px] leading-[1.45]">{ui("cancelWindowClosed")}</small>}</div>}</div>
     </article>)}</div>}
   </section>;

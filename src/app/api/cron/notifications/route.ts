@@ -1,6 +1,7 @@
 import {timingSafeEqual} from "node:crypto";
 import {NextResponse} from "next/server";
-import {processPendingNotifications} from "@/lib/notifications/email";
+import {processPendingNotifications,queueDueAppointmentReminders} from "@/lib/notifications/email";
+import {processPendingIntegrations} from "@/lib/integrations/appointments";
 
 export async function GET(request:Request){
   const secret=process.env.CRON_SECRET;
@@ -11,8 +12,10 @@ export async function GET(request:Request){
     return NextResponse.json({error:"Unauthorized."},{status:401});
   }
   try{
+    const remindersQueued=await queueDueAppointmentReminders();
     const processed=await processPendingNotifications(20);
-    return NextResponse.json({processed});
+    const integrationsProcessed=await processPendingIntegrations(20);
+    return NextResponse.json({remindersQueued,processed,integrationsProcessed});
   }catch(error){
     console.error("Scheduled notification processing failed:",error);
     return NextResponse.json({error:"Unable to process pending notifications."},{status:500});

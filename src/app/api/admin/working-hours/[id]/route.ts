@@ -8,7 +8,7 @@ import {prisma} from "@/lib/prisma";
 
 type RouteContext={params:Promise<{id:string}>};
 export async function PATCH(request:Request,{params}:RouteContext){
-  const access=await authorizeApi([UserRole.ADMIN]);
+  const access=await authorizeApi([UserRole.ADMIN,UserRole.RECEPTIONIST]);
   if(access.response)return access.response;
   const parsed=workingHoursPatchSchema.safeParse(await request.json().catch(()=>null));
   if(!parsed.success)return apiError("INVALID_WORKING_HOURS","Working hours are invalid.",400,parsed.error.flatten());
@@ -38,7 +38,7 @@ export async function PATCH(request:Request,{params}:RouteContext){
 }
 
 export async function DELETE(_request:Request,{params}:RouteContext){
-  const access=await authorizeApi([UserRole.ADMIN]);
+  const access=await authorizeApi([UserRole.ADMIN,UserRole.RECEPTIONIST]);
   if(access.response)return access.response;
   try{
     const {id}=await params;

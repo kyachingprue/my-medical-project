@@ -4,12 +4,14 @@ import {CalendarDays,Check,ChevronLeft,ChevronRight,Clock3} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {Link,useRouter} from "@/i18n/navigation";
 import {useEffect,useState} from "react";
+import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 type Props={mode:"patient"|"receptionist"|"admin";canBook?:boolean;appointment?:{id:string;doctorId:string;serviceId:string;startAt:string;patientName?:string;patientPhone?:string}};
 type Service={id:string;name:string;durationMinutes:number;price:number|string;isActive:boolean};
 type Doctor={id:string;name:string;specialization:string};
 type Slot={time:string;startAt:string;endAt:string;durationMinutes:number};
-type ApiResult<T>={data:T;error?:{code?:string;message?:string}};
+type ApiResult<T>={data:T;error?:{code?:string}};
 
 function dhakaDate(){
   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Dhaka",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
@@ -26,6 +28,7 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
   const t=useTranslations("appointments");
   const ui=useTranslations("appointmentUi");
   const notificationUi=useTranslations("notificationEnhancement");
+  const feedback=useTranslations("feedback");
   const m=useTranslations("management");
   const router=useRouter();
   const [today]=useState(()=>dhakaDate());
@@ -57,7 +60,7 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
   async function refreshAvailableSlots(){
     const response=await fetch(`/api/slots?doctorId=${encodeURIComponent(doctorId)}&serviceId=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`);
     const body=await response.json() as ApiResult<Slot[]>;
-    if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+    if(!response.ok)throw new Error(t("loadFailed"));
     setSlots(body.data);
     setSlotQuery(slotKey);
   }
@@ -66,9 +69,9 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
     let active=true;
     fetch("/api/services?limit=100").then(async response=>{
       const body=await response.json() as ApiResult<Service[]>;
-      if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok)throw new Error(t("loadFailed"));
       if(active)setServices(body.data);
-    }).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:t("loadFailed"))}).finally(()=>{if(active)setLoadingServices(false)});
+    }).catch(()=>{if(active)setError(t("loadFailed"))}).finally(()=>{if(active)setLoadingServices(false)});
     return ()=>{active=false};
   },[appointment?.serviceId,t]);
 
@@ -77,9 +80,9 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
     let active=true;
     fetch(`/api/doctors?limit=100&serviceId=${encodeURIComponent(serviceId)}`).then(async response=>{
       const body=await response.json() as ApiResult<Doctor[]>;
-      if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok)throw new Error(t("loadFailed"));
       if(active){setDoctors(body.data);setDoctorQuery(serviceId)}
-    }).catch(cause=>{if(active){setDoctors([]);setDoctorQuery(serviceId);setError(cause instanceof Error?cause.message:t("loadFailed"))}});
+    }).catch(()=>{if(active){setDoctors([]);setDoctorQuery(serviceId);setError(t("loadFailed"))}});
     return ()=>{active=false};
   },[serviceId,t]);
 
@@ -89,9 +92,9 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
     const controller=new AbortController();
     fetch(`/api/slots?doctorId=${encodeURIComponent(doctorId)}&serviceId=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`,{signal:controller.signal}).then(async response=>{
       const body=await response.json() as ApiResult<Slot[]>;
-      if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok)throw new Error(t("loadFailed"));
       if(active){setSlots(body.data);setSlotQuery(slotKey)}
-    }).catch(cause=>{if(active&&cause instanceof Error&&cause.name!=="AbortError"){setSlots([]);setSlotQuery(slotKey);setError(cause.message)}});
+    }).catch(cause=>{if(active&&cause instanceof Error&&cause.name!=="AbortError"){setSlots([]);setSlotQuery(slotKey);setError(t("loadFailed"))}});
     return ()=>{active=false;controller.abort()};
   },[doctorId,serviceId,date,slotKey,t]);
 
@@ -99,6 +102,7 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
     if(!canBook)return;
     if(!selectedSlot||!selectedService||!selectedDoctor)return;
     setError("");setSubmitting(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const staff=mode!=="patient";
       const endpoint=appointment
@@ -106,20 +110,28 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
         :staff?"/api/receptionist/appointments":"/api/appointments";
       const payload={doctorId,serviceId,date,time:slotTime,...(staff&&!appointment?{patientName:guestName,patientPhone:guestPhone}:{})};
       const response=await fetch(endpoint,{method:appointment?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-      const body=await response.json() as ApiResult<{id:string}>&{error?:{message?:string}};
+      const body=await response.json() as ApiResult<{id:string}>;
       if(!response.ok){
         if(body.error?.code==="SLOT_UNAVAILABLE"){
           setSlotTime("");
-          await refreshAvailableSlots();
-          throw new Error(t("slotTaken"));
+          toast.error(feedback("slotUnavailable"));
+          try{await refreshAvailableSlots()}catch{setError(t("loadFailed"))}
+          return;
         }
-        throw new Error(body.error?.message??t("bookingFailed"));
+        toast.error(getSafeApiErrorMessage(response.status,body.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:feedback("bookingFailed"),
+        }));
+        return;
       }
+      toast.success(feedback(appointment?"rescheduleSuccess":"bookingSuccess"));
       if(staff){setSaved(true);router.refresh()}
       else if(appointment){router.push(`/patient/dashboard/bookings/${appointment.id}`);router.refresh()}
       else router.push(`/patient/dashboard/bookings/${body.data.id}`);
-    }catch(cause){setError(cause instanceof Error?cause.message:t("bookingFailed"))}
-    finally{setSubmitting(false)}
+    }catch{toast.error(feedback("bookingFailed"))}
+    finally{toast.dismiss(loadingToast);setSubmitting(false)}
   }
 
   if(saved)return <div className="tw-appointment-success grid [justify-items:center] gap-[12px] max-w-[length:530px] m-[30px_auto] p-[32px] [border:1px_solid_var(--line)] rounded-[16px] [background:var(--surface)] text-center [&>span]:grid [&>span]:[place-items:center] [&>span]:w-[50px] [&>span]:h-[50px] [&>span]:rounded-[50%] [&>span]:[background:#e8f4ec] [&>span]:[color:#36794f] [&_h2]:m-[0] [&_p]:m-[0] [&_p]:[color:var(--muted)] [&_p]:text-[length:12px]"><span><Check size={25}/></span><h2>{appointment?t("rescheduled"):t("confirmed")}</h2><p>{t("bookingSaved")}</p>{appointment&&mode!=="patient"&&<p className="tw-appointment-email-note m-[0] p-[11px_13px] [border:1px_solid_color-mix(in_srgb,var(--teal)_18%,var(--line))] rounded-[9px] [background:color-mix(in_srgb,var(--teal)_5%,var(--surface))] [color:var(--muted)] text-[length:12px] leading-[1.6]">{notificationUi("staffRescheduleEmailNote")}</p>}<button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-primary [background:var(--teal)] [color:white] shadow-[0_7px_18px_color-mix(in_srgb,var(--teal)_25%,transparent)] [&:hover]:[background:var(--teal-dark)] [&_span]:text-[length:17px]" onClick={()=>router.push(mode==="admin"?"/admin/dashboard/appointments":"/receptionist/dashboard/appointments")}>{t("viewSchedule")}</button></div>;

@@ -11,6 +11,7 @@ enum UserRole {
   PATIENT
   RECEPTIONIST
   ADMIN
+  DOCTOR
 }
 
 enum Weekday {
@@ -32,6 +33,7 @@ enum AppointmentStatus {
 
 enum NotificationStatus {
   PENDING
+  PROCESSING
   SENT
   FAILED
 }
@@ -42,6 +44,34 @@ enum NotificationType {
   APPOINTMENT_RESCHEDULED
   DOCTOR_LEAVE
   APPOINTMENT_REMINDER
+  WAITLIST_AVAILABLE
+}
+
+enum WaitlistStatus {
+  WAITING
+  CONTACTED
+  BOOKED
+  CANCELLED
+}
+
+enum IntegrationChannel {
+  SMS
+  GOOGLE_CALENDAR
+}
+
+enum IntegrationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+enum IntegrationType {
+  CONFIRMATION
+  RESCHEDULED
+  CANCELLATION
+  REMINDER
+  CALENDAR_SYNC
 }
 
 model User {
@@ -53,11 +83,20 @@ model User {
   phone        String?
   image        String?
   role         UserRole      @default(PATIENT)
+  doctorId     String?       @unique
+  smsNotificationsEnabled Boolean @default(false)
+  smsConsentAt DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   appointments Appointment[]
   createdAppointments Appointment[] @relation("AppointmentCreator")
+  healthRecords PatientHealthRecord[] @relation("PatientHealthRecords")
+  authoredHealthRecords PatientHealthRecord[] @relation("AuthoredHealthRecords")
+  prescriptions Prescription[] @relation("PatientPrescriptions")
+  authoredPrescriptions Prescription[] @relation("AuthoredPrescriptions")
   notificationLogs NotificationLog[]
+  doctor       Doctor?       @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  waitlistEntries AppointmentWaitlistEntry[]
 
   @@index([role])
   @@index([createdAt])
@@ -80,6 +119,8 @@ model Doctor {
   workingHours    WorkingHours[]
   timeOff         TimeOff[]
   appointments    Appointment[]
+  waitlistEntries AppointmentWaitlistEntry[]
+  user            User?
 
   @@index([name])
   @@index([specialization])
@@ -95,10 +136,12 @@ model Service {
   price           Decimal         @db.Decimal(10, 2)
   image           String?
   isActive        Boolean         @default(true)
+  isOnlineConsultation Boolean    @default(false)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   doctors         DoctorService[]
   appointments    Appointment[]
+  waitlistEntries AppointmentWaitlistEntry[]
 
   @@index([name])
   @@index([isActive, createdAt])
@@ -168,6 +211,9 @@ model Appointment {
   endAt              DateTime          @db.Timestamptz(3)
   status             AppointmentStatus @default(CONFIRMED)
   cancellationReason String?           @db.VarChar(500)
+  patientNote        String?           @db.VarChar(2000)
+  staffNotes         String?           @db.VarChar(5000)
+  videoRoomName      String?           @unique @db.VarChar(100)
   createdById        String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -176,12 +222,98 @@ model Appointment {
   doctor             Doctor            @relation(fields: [doctorId], references: [id], onDelete: Restrict)
   service            Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   chair              Chair             @relation(fields: [chairId], references: [id], onDelete: Restrict)
+  healthRecords      PatientHealthRecord[]
+  prescriptions      Prescription[]
   notifications     NotificationLog[]
+  integrations      IntegrationLog[]
 
   @@index([doctorId, startAt, status])
   @@index([chairId, startAt, status])
   @@index([patientId, startAt, status])
   @@index([status, startAt])
+}
+
+model AppointmentWaitlistEntry {
+  id              String        @id @default(cuid())
+  patientId       String
+  serviceId       String
+  doctorId        String?
+  fromDate        DateTime      @db.Date
+  throughDate     DateTime      @db.Date
+  notes           String?       @db.VarChar(1000)
+  status          WaitlistStatus @default(WAITING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  patient         User          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  doctor          Doctor?       @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+
+  @@index([status, fromDate, throughDate])
+  @@index([patientId, status])
+  @@index([serviceId, doctorId, status])
+}
+
+model IntegrationLog {
+  id             String            @id @default(cuid())
+  appointmentId  String
+  channel        IntegrationChannel
+  type           IntegrationType
+  idempotencyKey String            @unique
+  recipient      String
+  status         IntegrationStatus @default(PENDING)
+  provider       String
+  providerMessage String?
+  attempts       Int               @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  appointment    Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([appointmentId, channel, type])
+}
+
+model PatientHealthRecord {
+  id            String       @id @default(cuid())
+  patientId     String
+  createdById   String
+  appointmentId String?
+  title         String       @db.VarChar(160)
+  diagnosis     String       @db.Text
+  treatment     String       @db.Text
+  notes         String?      @db.Text
+  recordedAt    DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  patient       User         @relation("PatientHealthRecords", fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("AuthoredHealthRecords", fields: [createdById], references: [id], onDelete: Restrict)
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, recordedAt])
+  @@index([createdById, createdAt])
+  @@index([appointmentId])
+}
+
+model Prescription {
+  id            String       @id @default(cuid())
+  patientId     String
+  createdById   String
+  appointmentId String?
+  medication    String       @db.VarChar(200)
+  dosage        String       @db.VarChar(120)
+  frequency     String       @db.VarChar(160)
+  duration      String       @db.VarChar(120)
+  instructions  String?      @db.Text
+  issuedAt      DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  patient       User         @relation("PatientPrescriptions", fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("AuthoredPrescriptions", fields: [createdById], references: [id], onDelete: Restrict)
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, issuedAt])
+  @@index([createdById, createdAt])
+  @@index([appointmentId])
 }
 
 model NotificationLog {

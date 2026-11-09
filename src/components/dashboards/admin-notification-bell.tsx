@@ -59,7 +59,7 @@ export function AdminNotificationBell(){
         response=await fetch(url,{cache:"no-store"});
       }
       const body=await response.json() as {data?:Summary;error?:{message?:string}};
-      if(!response.ok||!body.data)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok||!body.data)throw new Error(t("loadFailed"));
       if(!readCursor.current||markVisibleAsRead){
         readCursor.current=body.data.latestCreatedAt??body.data.serverTime;
         try{window.localStorage.setItem(notificationReadCursorKey,readCursor.current)}catch(cause){console.error("Could not save the notification cursor:",cause)}
@@ -67,9 +67,8 @@ export function AdminNotificationBell(){
       setSummary({...body.data,unreadCount:markVisibleAsRead?0:body.data.unreadCount});
       setError("");
     }catch(cause){
-      const message=cause instanceof TypeError?t("loadFailed"):cause instanceof Error?cause.message:t("loadFailed");
       if(!(cause instanceof TypeError))console.error("Could not refresh dashboard notifications:",cause);
-      setError(message);
+      setError(t("loadFailed"));
     }finally{
       requestInFlight.current=false;
     }

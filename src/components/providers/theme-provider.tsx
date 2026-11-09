@@ -1,8 +1,8 @@
 "use client";
 
 import {createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore} from "react";
-import {Toaster} from "react-hot-toast";
 import type {ReactNode} from "react";
+import {AppToaster} from "@/components/providers/app-toaster";
 
 type Theme = "light" | "dark" | "system";
 type ResolvedTheme = Exclude<Theme, "system">;
@@ -105,7 +105,7 @@ export function ThemeProvider({children}: {children: ReactNode}) {
   return (
     <ThemeContext.Provider value={value}>
       {children}
-      <Toaster position="top-center" toastOptions={{duration:4000}}/>
+      <AppToaster/>
     </ThemeContext.Provider>
   );
 }

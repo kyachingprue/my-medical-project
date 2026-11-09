@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {AppointmentStatus,UserRole} from "@prisma/client";
 import {apiError,authorizeApi} from "@/lib/api/responses";
 import {appointmentDateRange,appointmentListQuerySchema} from "@/lib/appointments/schemas";
+import {omitStaffNotes} from "@/lib/appointments/patient-data";
 import {prisma} from "@/lib/prisma";
 
 export async function GET(request:Request){
@@ -29,14 +30,14 @@ export async function GET(request:Request){
   };
   try{
     const [data,total]=await Promise.all([
-      prisma.appointment.findMany({where,skip:(page-1)*limit,take:limit,      orderBy:{startAt:period==="upcoming"?"asc":"desc"},include:{
+      prisma.appointment.findMany({where,skip:(page-1)*limit,take:limit,orderBy:{startAt:period==="upcoming"?"asc":"desc"},include:{
         doctor:{select:{id:true,name:true,specialization:true,profileImage:true}},
-        service:{select:{id:true,name:true,slug:true,durationMinutes:true,price:true}},
+        service:{select:{id:true,name:true,slug:true,durationMinutes:true,price:true,isOnlineConsultation:true}},
         chair:{select:{id:true,name:true}},
       }}),
       prisma.appointment.count({where}),
     ]);
-    return NextResponse.json({data,pagination:{page,limit,total,totalPages:Math.ceil(total/limit)}});
+    return NextResponse.json({data:data.map(omitStaffNotes),pagination:{page,limit,total,totalPages:Math.ceil(total/limit)}});
   }catch(error){
     console.error("Could not list patient appointments:",error);
     return apiError("APPOINTMENT_LIST_FAILED","Unable to load your appointments.",500);

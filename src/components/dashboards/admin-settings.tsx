@@ -8,15 +8,16 @@ import type {AdminPreferences} from "@/lib/admin-preferences";
 
 export function AdminSettings(){
   const t=useTranslations("dashboard");
+  const feedback=useTranslations("feedback");
   const {theme,setTheme}=useTheme();
   const preferences=useAdminPreferences();
 
   function save<Key extends keyof AdminPreferences>(key:Key,value:AdminPreferences[Key]){
     try{
       setAdminPreference(key,value);
-      toast.success("Preference saved");
-    }catch(error){
-      toast.error(error instanceof Error?error.message:"Could not save this preference");
+      toast.success(feedback("changesSaved"));
+    }catch{
+      toast.error(feedback("serverError"));
     }
   }
 

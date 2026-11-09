@@ -4,10 +4,13 @@ import {useTranslations} from "next-intl";
 import {useRouter} from "@/i18n/navigation";
 import {useState} from "react";
 import type {FormEvent} from "react";
+import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 type ChairItem={id:string;name:string;description:string|null;isActive:boolean;_count:{appointments:number}};
 export function ChairsManager({chairs}:{chairs:ChairItem[]}){
   const t=useTranslations("management");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
   const [name,setName]=useState("");
   const [description,setDescription]=useState("");
@@ -15,24 +18,42 @@ export function ChairsManager({chairs}:{chairs:ChairItem[]}){
   const [busy,setBusy]=useState(false);
   async function create(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setError("");setBusy(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch("/api/admin/chairs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,description})});
-      const result=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(result.error?.message??t("saveFailed"));
-      setName("");setDescription("");router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:t("saveFailed"))}
-    finally{setBusy(false)}
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
+      }
+      setName("");setDescription("");toast.success(feedback("changesSaved"));router.refresh();
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast);setBusy(false)}
   }
   async function toggle(chair:ChairItem){
     if(chair.isActive&&!window.confirm(t("confirmDeactivate")))return;
     setError("");setBusy(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch(`/api/admin/chairs/${chair.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({isActive:!chair.isActive})});
-      const result=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(result.error?.message??t("saveFailed"));
-      router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:t("saveFailed"))}
-    finally{setBusy(false)}
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
+      }
+      toast.success(feedback("changesSaved"));router.refresh();
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast);setBusy(false)}
   }
   return <div className="tw-management-stack grid gap-[18px]">
     <form className="tw-management-card [&_p]:[color:var(--muted)] [&_p]:text-[length:13px] [&_p]:leading-[1.7] [&_p]:mb-[0] min-w-[length:0] p-[24px] [border:1px_solid_var(--line)] rounded-[16px] [background:var(--surface)] shadow-[var(--shadow)] [@media(max-width:650px)]:p-[17px] tw-management-form grid gap-[18px]" onSubmit={create}><span className="tw-section-kicker text-[length:10px] tracking-[1.55px] font-extrabold [color:var(--teal)] inline-flex items-center gap-[9px] [.tw-cta-section_&]:[color:#b4ded2] [.tw-dashboard-subpage_&]:block [.tw-dashboard-subpage_&]:text-center">{t("addChair")}</span><div className="tw-management-form-grid grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[16px] [@media(max-width:650px)]:grid-cols-[1fr]"><label className="tw-management-field grid gap-[7px] min-w-[length:0] [color:var(--text)] text-[length:12px] [font-weight:650] [&_input]:w-[100%] [&_input]:min-h-[42px] [&_input]:p-[10px_12px] [&_input]:[border:1px_solid_var(--line)] [&_input]:rounded-[8px] [&_input]:[background:var(--bg)] [&_input]:[color:var(--text)] [&_input]:[outline:none] [&_textarea]:w-[100%] [&_textarea]:min-h-[42px] [&_textarea]:p-[10px_12px] [&_textarea]:[border:1px_solid_var(--line)] [&_textarea]:rounded-[8px] [&_textarea]:[background:var(--bg)] [&_textarea]:[color:var(--text)] [&_textarea]:[outline:none] [&_select]:w-[100%] [&_select]:min-h-[42px] [&_select]:p-[10px_12px] [&_select]:[border:1px_solid_var(--line)] [&_select]:rounded-[8px] [&_select]:[background:var(--bg)] [&_select]:[color:var(--text)] [&_select]:[outline:none] [&_textarea]:[resize:vertical] [&_input:focus]:border-[color:var(--teal)] [&_input:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_textarea:focus]:border-[color:var(--teal)] [&_textarea:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_select:focus]:border-[color:var(--teal)] [&_select:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_small]:[color:#b43e37] [&_small]:text-[length:11px]"><span>{t("chairName")}</span><input required value={name} onChange={event=>setName(event.target.value)}/></label><label className="tw-management-field grid gap-[7px] min-w-[length:0] [color:var(--text)] text-[length:12px] [font-weight:650] [&_input]:w-[100%] [&_input]:min-h-[42px] [&_input]:p-[10px_12px] [&_input]:[border:1px_solid_var(--line)] [&_input]:rounded-[8px] [&_input]:[background:var(--bg)] [&_input]:[color:var(--text)] [&_input]:[outline:none] [&_textarea]:w-[100%] [&_textarea]:min-h-[42px] [&_textarea]:p-[10px_12px] [&_textarea]:[border:1px_solid_var(--line)] [&_textarea]:rounded-[8px] [&_textarea]:[background:var(--bg)] [&_textarea]:[color:var(--text)] [&_textarea]:[outline:none] [&_select]:w-[100%] [&_select]:min-h-[42px] [&_select]:p-[10px_12px] [&_select]:[border:1px_solid_var(--line)] [&_select]:rounded-[8px] [&_select]:[background:var(--bg)] [&_select]:[color:var(--text)] [&_select]:[outline:none] [&_textarea]:[resize:vertical] [&_input:focus]:border-[color:var(--teal)] [&_input:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_textarea:focus]:border-[color:var(--teal)] [&_textarea:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_select:focus]:border-[color:var(--teal)] [&_select:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_small]:[color:#b43e37] [&_small]:text-[length:11px]"><span>{t("description")}</span><input value={description} onChange={event=>setDescription(event.target.value)}/></label></div>{error&&<p className="tw-management-error m-[0] [color:#b43e37] text-[length:12px]" role="alert">{error}</p>}<button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-primary [background:var(--teal)] [color:white] shadow-[0_7px_18px_color-mix(in_srgb,var(--teal)_25%,transparent)] [&:hover]:[background:var(--teal-dark)] [&_span]:text-[length:17px]" disabled={busy}>{busy?t("saving"):t("save")}</button></form>

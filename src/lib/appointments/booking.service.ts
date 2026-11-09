@@ -1,23 +1,27 @@
-import {AppointmentStatus,Prisma,UserRole} from "@prisma/client";
+import {AppointmentStatus,IntegrationType,Prisma,UserRole} from "@prisma/client";
+import {randomBytes} from "node:crypto";
 import {prisma} from "@/lib/prisma";
 import {BOOKING_BUFFER_MINUTES,canPatientCancelAppointment} from "./time";
 import {generateAvailableSlots} from "./slots.service";
 import {createAppointmentNotification,scheduleAppointmentNotification} from "@/lib/notifications/email";
 import {lockDoctorRow} from "@/lib/management/doctor-lock";
 import {logUserAction} from "@/lib/management/audit";
+import {queueAppointmentIntegrations} from "@/lib/integrations/appointments";
+import {notifyWaitlistForOpenedAppointment} from "./waitlist.service";
 
 type SlotInput={doctorId:string;serviceId:string;date:string;time:string};
 type BookingActor={id:string;role:UserRole};
 type BookingFailure={kind:"failure";status:number;code:string;message:string};
-type BookingSuccess={kind:"success";appointment:Awaited<ReturnType<typeof prisma.appointment.findUnique>>};
-type BookingResult=BookingFailure|BookingSuccess;
 
 const appointmentDetails={
-  patient:{select:{id:true,name:true,email:true,phone:true}},
+  patient:{select:{id:true,name:true,email:true,phone:true,smsNotificationsEnabled:true}},
   doctor:{select:{id:true,name:true,specialization:true,profileImage:true}},
-  service:{select:{id:true,name:true,slug:true,durationMinutes:true,price:true}},
+  service:{select:{id:true,name:true,slug:true,durationMinutes:true,price:true,isOnlineConsultation:true}},
   chair:{select:{id:true,name:true}},
 } satisfies Prisma.AppointmentInclude;
+
+type BookingSuccess={kind:"success";appointment:Prisma.AppointmentGetPayload<{include:typeof appointmentDetails}>};
+type BookingResult=BookingFailure|BookingSuccess;
 
 export async function createPatientAppointment(actor:BookingActor,input:SlotInput):Promise<BookingResult>{
   return createAppointmentTransaction(actor,input,{patientId:actor.id});
@@ -48,6 +52,8 @@ async function createAppointmentTransaction(
       if(available.error)return fail(available.error.code,available.error.message,available.error.status);
       const slot=available.slots.find(candidate=>candidate.time===input.time);
       if(!slot)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
+      const service=await tx.service.findUnique({where:{id:input.serviceId},select:{isOnlineConsultation:true}});
+      if(!service)return fail("SERVICE_NOT_FOUND","Service not found.",404);
 
       const chairId=await lockAvailableChair(tx,slot.startAt,slot.endAt);
       if(!chairId)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
@@ -64,6 +70,7 @@ async function createAppointmentTransaction(
           endAt:slot.endAt,
           status:AppointmentStatus.CONFIRMED,
           createdById:actor.id,
+          videoRoomName:service.isOnlineConsultation?createVideoRoomName():null,
         },
         include:appointmentDetails,
       });
@@ -72,6 +79,10 @@ async function createAppointmentTransaction(
         appointment:created,
         userId:created.patientId,
         recipientEmail:created.patient?.email,
+      });
+      await queueAppointmentIntegrations(tx,created,IntegrationType.CONFIRMATION,{
+        phone:created.patient?.phone,
+        smsEnabled:created.patient?.smsNotificationsEnabled,
       });
       await logUserAction(tx,actor.id,"CREATE","Appointment",created.id,{doctorId:created.doctorId,serviceId:created.serviceId,startAt:created.startAt.toISOString(),endAt:created.endAt.toISOString()});
       return {appointment:created,notificationId};
@@ -109,7 +120,16 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
 
       const chairId=await lockAvailableChair(tx,slot.startAt,slot.endAt,id);
       if(!chairId)return fail("SLOT_UNAVAILABLE","This appointment slot is no longer available.",409);
-      const updated=await tx.appointment.update({where:{id},data:{doctorId:input.doctorId,serviceId:input.serviceId,chairId,startAt:slot.startAt,endAt:slot.endAt},include:appointmentDetails});
+      const service=await tx.service.findUnique({where:{id:input.serviceId},select:{isOnlineConsultation:true}});
+      if(!service)return fail("SERVICE_NOT_FOUND","Service not found.",404);
+      const updated=await tx.appointment.update({where:{id},data:{
+        doctorId:input.doctorId,
+        serviceId:input.serviceId,
+        chairId,
+        startAt:slot.startAt,
+        endAt:slot.endAt,
+        videoRoomName:service.isOnlineConsultation?current.videoRoomName??createVideoRoomName():null,
+      },include:appointmentDetails});
       const notificationId=actor.role===UserRole.ADMIN||actor.role===UserRole.RECEPTIONIST
         ?await createAppointmentNotification(tx,{
           type:"APPOINTMENT_RESCHEDULED",
@@ -118,6 +138,10 @@ export async function reschedulePatientAppointment(actor:BookingActor,id:string,
           recipientEmail:updated.patient?.email,
         })
         :null;
+      await queueAppointmentIntegrations(tx,updated,IntegrationType.RESCHEDULED,{
+        phone:updated.patient?.phone,
+        smsEnabled:updated.patient?.smsNotificationsEnabled,
+      });
       await logUserAction(tx,actor.id,"RESCHEDULE","Appointment",id,{before:{doctorId:current.doctorId,serviceId:current.serviceId,startAt:current.startAt.toISOString(),endAt:current.endAt.toISOString()},after:{doctorId:updated.doctorId,serviceId:updated.serviceId,startAt:updated.startAt.toISOString(),endAt:updated.endAt.toISOString()}});
       return {appointment:updated,notificationId};
     },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:30_000});
@@ -147,6 +171,11 @@ export async function cancelAppointment(actor:BookingActor,id:string,reason?:str
         userId:updated.patientId,
         recipientEmail:updated.patient?.email,
       });
+      await queueAppointmentIntegrations(tx,updated,IntegrationType.CANCELLATION,{
+        phone:updated.patient?.phone,
+        smsEnabled:updated.patient?.smsNotificationsEnabled,
+      });
+      await notifyWaitlistForOpenedAppointment(tx,updated);
       await logUserAction(tx,actor.id,"CANCEL","Appointment",id,{statusBefore:appointment.status,statusAfter:updated.status,reason:reason??null});
       return {appointment:updated,notificationId};
     },{maxWait:10_000,timeout:20_000});
@@ -202,4 +231,8 @@ function isBookingConflict(error:unknown){
   const candidate=error as {code?:string;meta?:{code?:string;database_error?:string;message?:string};message?:string};
   const message=[candidate.message,candidate.meta?.database_error,candidate.meta?.message].filter(Boolean).join(" ");
   return candidate.code==="P2004"||candidate.meta?.code==="23P01"||candidate.meta?.code==="55P03"||/55P03|could not obtain lock/i.test(message)||message.includes("prevent_doctor_booking_overlap")||message.includes("prevent_chair_booking_overlap");
+}
+
+function createVideoRoomName(){
+  return `smilecraft-${randomBytes(24).toString("hex")}`;
 }

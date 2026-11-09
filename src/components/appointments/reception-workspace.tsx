@@ -6,17 +6,19 @@ import {useTranslations} from "next-intl";
 import {Link} from "@/i18n/navigation";
 import {useEffect,useState} from "react";
 import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 import {useAdminPreferences} from "@/lib/admin-preferences";
 
 type Props={role:"receptionist"|"admin"};
 type Appointment={id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";doctor:{id:string;name:string;specialization:string};service:{name:string;durationMinutes:number};chair:{id:string;name:string}};
 type Doctor={id:string;name:string;specialization:string};
 type Service={id:string;name:string};
-type ApiResult<T>={data:T;pagination?:{total:number};error?:{message?:string}};
+type ApiResult<T>={data:T;pagination?:{total:number};error?:{code?:string}};
 type AppointmentView="day"|"week"|"month";
 
 export function ReceptionWorkspace({role}:Props){
   const t=useTranslations("appointments");
+  const feedback=useTranslations("feedback");
   const m=useTranslations("management");
   const preferences=useAdminPreferences();
   const [appointments,setAppointments]=useState<Appointment[]>([]);
@@ -57,17 +59,17 @@ export function ReceptionWorkspace({role}:Props){
     Promise.all([
       fetch("/api/doctors?limit=100").then(async response=>{
         const body=await response.json() as ApiResult<Doctor[]>;
-        if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+        if(!response.ok)throw new Error(t("loadFailed"));
         return body.data;
       }),
       fetch("/api/services?limit=100").then(async response=>{
         const body=await response.json() as ApiResult<Service[]>;
-        if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+        if(!response.ok)throw new Error(t("loadFailed"));
         return body.data;
       }),
     ]).then(([doctorData,serviceData])=>{
       if(active){setDoctors(doctorData);setServices(serviceData);setFailure(null)}
-    }).catch(cause=>{if(active)setFailure({key:"doctors",message:cause instanceof Error?cause.message:t("loadFailed")})});
+    }).catch(()=>{if(active)setFailure({key:"doctors",message:t("loadFailed")})});
     return ()=>{active=false};
   },[t]);
 
@@ -82,9 +84,9 @@ export function ReceptionWorkspace({role}:Props){
     if(query.trim())params.set("q",query.trim());
     fetch(`${api}?${params}`,{signal:controller.signal,cache:"no-store"}).then(async response=>{
       const body=await response.json() as ApiResult<Appointment[]>;
-      if(!response.ok)throw new Error(body.error?.message??t("loadFailed"));
+      if(!response.ok)throw new Error(t("loadFailed"));
       if(active){setAppointments(body.data);setFailure(null)}
-    }).catch(cause=>{if(active&&cause instanceof Error&&cause.name!=="AbortError")setFailure({key:queryKey,message:cause.message})}).finally(()=>{if(active)setLoadedKey(queryKey)});
+    }).catch(cause=>{if(active&&cause instanceof Error&&cause.name!=="AbortError")setFailure({key:queryKey,message:t("loadFailed")})}).finally(()=>{if(active)setLoadedKey(queryKey)});
     return ()=>{active=false;controller.abort()};
   },[api,date,view,status,doctorId,serviceId,query,t,queryKey]);
 
@@ -92,25 +94,32 @@ export function ReceptionWorkspace({role}:Props){
     const endpoint=role==="admin"?`/api/admin/appointments/${appointment.id}/status`:`/api/receptionist/appointments/${appointment.id}`;
     const previousAppointments=appointments;
     setBusyId(appointment.id);
+    const loadingToast=toast.loading(feedback("processing"));
     setAppointments(current=>status&&status!==next?current.filter(item=>item.id!==appointment.id):current.map(item=>item.id===appointment.id?{...item,status:next}:item));
     try{
       const response=await fetch(endpoint,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:next})});
       const result=await response.json() as ApiResult<Appointment>;
-      if(!response.ok)throw new Error(result.error?.message??t("updateFailed"));
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("updateFailed"),
+        }));
+        return;
+      }
       setAppointments(current=>current.map(item=>item.id===appointment.id?result.data:item));
       setFailure(null);
       toast.success(t(next==="COMPLETED"?"markCompleted":next==="NO_SHOW"?"markNoShow":"cancelled"));
-    }catch(cause){
+    }catch{
       setAppointments(current=>{
         const restored=current.some(item=>item.id===appointment.id)
           ?current.map(item=>item.id===appointment.id?{...item,status:appointment.status}:item)
           :[...current,previousAppointments.find(item=>item.id===appointment.id)??appointment];
         return restored.sort((left,right)=>left.startAt.localeCompare(right.startAt));
       });
-      const message=cause instanceof Error?cause.message:t("updateFailed");
-      setFailure({key:queryKey,message});
-      toast.error(message);
-    }finally{setBusyId("")}
+      toast.error(feedback("serverError"));
+    }finally{toast.dismiss(loadingToast);setBusyId("")}
   }
 
   return <section className="tw-reception-workspace min-w-[length:0]">

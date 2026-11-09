@@ -5,7 +5,7 @@ import {getAdminApp} from "@/lib/firebase/admin";
 import {getCurrentUser,SESSION_COOKIE} from "@/lib/auth/session";
 import {prisma} from "@/lib/prisma";
 
-const schema=z.object({idToken:z.string().min(1),expectedRole:z.enum(["PATIENT","RECEPTIONIST","ADMIN"])});
+const schema=z.object({idToken:z.string().min(1),expectedRole:z.enum(["PATIENT","RECEPTIONIST","ADMIN","DOCTOR"])});
 export async function GET(){
   const user=await getCurrentUser();
   return user?NextResponse.json({user:{name:user.name,email:user.email,image:user.image,role:user.role}}):NextResponse.json({user:null},{status:401});

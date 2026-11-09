@@ -5,7 +5,9 @@ import {useTranslations} from "next-intl";
 import {useRouter} from "@/i18n/navigation";
 import {useState} from "react";
 import {useForm} from "react-hook-form";
+import {toast} from "react-hot-toast";
 import {timeOffSchema} from "@/lib/management/schemas";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 import type {z} from "zod";
 
 type Values=z.input<typeof timeOffSchema>;
@@ -14,31 +16,54 @@ type LeaveEntry={id:string;doctorId:string;startAt:string|Date;endAt:string|Date
 type Conflict={id:string;startAt:string|Date;endAt:string|Date;patient:{name:string};service:{name:string};chair:{name:string}};
 export function TimeOffManager({doctors,entries}:{doctors:DoctorOption[];entries:LeaveEntry[]}){
   const t=useTranslations("management");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
-  const [error,setError]=useState("");
   const [conflicts,setConflicts]=useState<Conflict[]>([]);
   const {register,handleSubmit,reset,formState:{isSubmitting}}=useForm<Values>({
     resolver:zodResolver(timeOffSchema),
     defaultValues:{doctorId:doctors[0]?.id??"",startAt:"",endAt:"",reason:""},
   });
   async function submit(values:Values){
-    setError("");setConflicts([]);
+    setConflicts([]);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch("/api/admin/time-off",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});
-      const result=await response.json() as {error?:{message?:string;details?:{appointments?:Conflict[]}}};
+      const result=await response.json() as {error?:{code?:string;details?:{appointments?:Conflict[]}}};
       if(!response.ok){
         setConflicts(result.error?.details?.appointments??[]);
-        throw new Error(result.error?.message??t("saveFailed"));
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
       }
       reset({...values,startAt:"",endAt:"",reason:""});
+      toast.success(feedback("timeOffCreated"));
       router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:t("saveFailed"))}
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast)}
   }
   async function cancel(id:string){
     if(!window.confirm(t("confirmCancelLeave")))return;
-    const response=await fetch(`/api/admin/time-off/${id}`,{method:"DELETE"});
-    if(!response.ok){const result=await response.json() as {error?:{message?:string}};setError(result.error?.message??t("saveFailed"));return}
-    router.refresh();
+    const loadingToast=toast.loading(feedback("processing"));
+    try{
+      const response=await fetch(`/api/admin/time-off/${id}`,{method:"DELETE"});
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
+      }
+      toast.success(feedback("timeOffCancelled"));
+      router.refresh();
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast)}
   }
   const formatDate=(value:string|Date)=>new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
   return <div className="tw-management-stack grid gap-[18px]">
@@ -50,7 +75,6 @@ export function TimeOffManager({doctors,entries}:{doctors:DoctorOption[];entries
         <label className="tw-management-field grid gap-[7px] min-w-[length:0] [color:var(--text)] text-[length:12px] [font-weight:650] [&_input]:w-[100%] [&_input]:min-h-[42px] [&_input]:p-[10px_12px] [&_input]:[border:1px_solid_var(--line)] [&_input]:rounded-[8px] [&_input]:[background:var(--bg)] [&_input]:[color:var(--text)] [&_input]:[outline:none] [&_textarea]:w-[100%] [&_textarea]:min-h-[42px] [&_textarea]:p-[10px_12px] [&_textarea]:[border:1px_solid_var(--line)] [&_textarea]:rounded-[8px] [&_textarea]:[background:var(--bg)] [&_textarea]:[color:var(--text)] [&_textarea]:[outline:none] [&_select]:w-[100%] [&_select]:min-h-[42px] [&_select]:p-[10px_12px] [&_select]:[border:1px_solid_var(--line)] [&_select]:rounded-[8px] [&_select]:[background:var(--bg)] [&_select]:[color:var(--text)] [&_select]:[outline:none] [&_textarea]:[resize:vertical] [&_input:focus]:border-[color:var(--teal)] [&_input:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_textarea:focus]:border-[color:var(--teal)] [&_textarea:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_select:focus]:border-[color:var(--teal)] [&_select:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_small]:[color:#b43e37] [&_small]:text-[length:11px]"><span>{t("endAtDhaka")}</span><input type="datetime-local" {...register("endAt")}/></label>
         <label className="tw-management-field grid gap-[7px] min-w-[length:0] [color:var(--text)] text-[length:12px] [font-weight:650] [&_input]:w-[100%] [&_input]:min-h-[42px] [&_input]:p-[10px_12px] [&_input]:[border:1px_solid_var(--line)] [&_input]:rounded-[8px] [&_input]:[background:var(--bg)] [&_input]:[color:var(--text)] [&_input]:[outline:none] [&_textarea]:w-[100%] [&_textarea]:min-h-[42px] [&_textarea]:p-[10px_12px] [&_textarea]:[border:1px_solid_var(--line)] [&_textarea]:rounded-[8px] [&_textarea]:[background:var(--bg)] [&_textarea]:[color:var(--text)] [&_textarea]:[outline:none] [&_select]:w-[100%] [&_select]:min-h-[42px] [&_select]:p-[10px_12px] [&_select]:[border:1px_solid_var(--line)] [&_select]:rounded-[8px] [&_select]:[background:var(--bg)] [&_select]:[color:var(--text)] [&_select]:[outline:none] [&_textarea]:[resize:vertical] [&_input:focus]:border-[color:var(--teal)] [&_input:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_textarea:focus]:border-[color:var(--teal)] [&_textarea:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_select:focus]:border-[color:var(--teal)] [&_select:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_small]:[color:#b43e37] [&_small]:text-[length:11px]"><span>{t("reason")}</span><input maxLength={500} {...register("reason")}/></label>
       </div>
-      {error&&<p className="tw-management-error m-[0] [color:#b43e37] text-[length:12px]" role="alert">{error}</p>}
       {conflicts.length>0&&<div className="tw-conflict-summary p-[13px_15px] [border:1px_solid_#e8c9a9] rounded-[9px] [background:color-mix(in_srgb,var(--peach)_55%,var(--surface))] text-[length:12px] [&_ul]:m-[8px_0_0] [&_ul]:pl-[20px] [&_ul]:[color:var(--muted)] [&_ul]:leading-[1.7]"><strong>{t("affectedAppointments")}</strong><ul>{conflicts.map(item=><li key={item.id}>{formatDate(item.startAt)} · {item.patient.name} · {item.service.name} · {item.chair.name}</li>)}</ul></div>}
       <button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-primary [background:var(--teal)] [color:white] shadow-[0_7px_18px_color-mix(in_srgb,var(--teal)_25%,transparent)] [&:hover]:[background:var(--teal-dark)] [&_span]:text-[length:17px]" disabled={isSubmitting||!doctors.length}>{isSubmitting?t("saving"):t("saveLeave")}</button><p className="tw-management-hint m-[0] [color:var(--muted)] text-[length:11px] leading-[1.6]">{t("leaveTimezoneNote")}</p>
     </form>

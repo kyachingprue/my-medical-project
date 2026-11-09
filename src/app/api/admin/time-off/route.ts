@@ -47,7 +47,7 @@ export async function POST(request:Request){
       const record=await tx.timeOff.create({data:{doctorId:doctor.id,startAt,endAt,reason:parsed.data.reason},include:{doctor:{select:{id:true,name:true}}}});
       await logAdminAction(tx,access.user,"CREATE","TimeOff",record.id,{doctorId:doctor.id,startAt:parsed.data.startAt,endAt:parsed.data.endAt,reason:record.reason});
       return {kind:"created" as const,record};
-    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
+    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:20_000});
     if(result.kind==="doctor-missing")return apiError("DOCTOR_NOT_FOUND","Doctor not found.",404);
     if(result.kind==="doctor-inactive")return apiError("DOCTOR_INACTIVE","Cannot add leave for an inactive doctor.",409);
     if(result.kind==="leave-overlap")return apiError("TIME_OFF_OVERLAP","This leave overlaps another leave entry.",409);

@@ -23,7 +23,7 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
-  const access=await authorizeApi([UserRole.ADMIN]);
+  const access=await authorizeApi([UserRole.ADMIN,UserRole.RECEPTIONIST]);
   if(access.response)return access.response;
   const parsed=workingHoursSchema.safeParse(await request.json().catch(()=>null));
   if(!parsed.success)return apiError("INVALID_WORKING_HOURS","Working hours are invalid.",400,parsed.error.flatten());

@@ -1,24 +1,27 @@
 "use client";
 import {zodResolver} from "@hookform/resolvers/zod";
 import {createUserWithEmailAndPassword,GoogleAuthProvider,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,updateProfile} from "firebase/auth";
-import {Eye,EyeOff,Headset,LockKeyhole,Mail,ShieldCheck,UserRound} from "lucide-react";
+import {Eye,EyeOff,Headset,LockKeyhole,Mail,ShieldCheck,Stethoscope,UserRound} from "lucide-react";
 import {useTranslations} from "next-intl";
 import {useRouter} from "@/i18n/navigation";
 import {Link} from "@/i18n/navigation";
 import {useState,type ReactNode} from "react";
 import {useForm} from "react-hook-form";
+import {toast} from "react-hot-toast";
 import {z} from "zod";
 import {firebaseAuth,firebaseConfigured} from "@/lib/firebase/client";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 type Mode="sign-in"|"register"|"forgot";
-type AuthRole="PATIENT"|"RECEPTIONIST"|"ADMIN";
+type AuthRole="PATIENT"|"RECEPTIONIST"|"ADMIN"|"DOCTOR";
 const roleOptions=[
   {value:"PATIENT",label:"rolePatient",icon:UserRound},
   {value:"RECEPTIONIST",label:"roleReceptionist",icon:Headset},
   {value:"ADMIN",label:"roleAdmin",icon:ShieldCheck},
+  {value:"DOCTOR",label:"roleDoctor",icon:Stethoscope},
 ] as const;
 export function AuthForm({mode,returnTo}:{mode:Mode;returnTo?:string}) {
-  const t=useTranslations("auth"); const v=useTranslations("validation"); const router=useRouter();
+  const t=useTranslations("auth"); const v=useTranslations("validation"); const feedback=useTranslations("feedback"); const router=useRouter();
   const [show,setShow]=useState(false);const [message,setMessage]=useState("");const [busy,setBusy]=useState(false);
   const [selectedRole,setSelectedRole]=useState<AuthRole>("PATIENT");
   const schema=z.object({name:z.string().trim().min(2,v("name")).optional(),email:z.string().trim().email(v("email")),password:mode==="forgot"?z.string().optional():z.string().min(8,v("password")),confirmPassword:mode==="register"?z.string().min(1,v("confirm")):z.string().optional(),terms:mode==="register"?z.literal(true,{error:v("terms")}):z.boolean().optional()}).refine(value=>mode!=="register"||value.password===value.confirmPassword,{path:["confirmPassword"],message:v("match")});
@@ -31,28 +34,48 @@ export function AuthForm({mode,returnTo}:{mode:Mode;returnTo?:string}) {
     if(response.status===403&&payload.error==="ROLE_MISMATCH"&&payload.role){
       const actualRole=roleOptions.find(option=>option.value===payload.role);
       setMessage(t("roleMismatch",{role:actualRole?t(actualRole.label):""}));
-      return;
+      return false;
     }
-    if(!response.ok||!payload.role)throw new Error(payload.error??"Could not start your session.");
-    router.replace(payload.role==="PATIENT"&&returnTo?returnTo:payload.role==="ADMIN"?"/admin/dashboard":payload.role==="RECEPTIONIST"?"/receptionist/dashboard":"/patient/dashboard");
+    if(!response.ok||!payload.role){
+      toast.error(getSafeApiErrorMessage(response.status,payload.error,{
+        permissionError:feedback("permissionError"),
+        serverError:feedback("serverError"),
+        validationError:feedback("validationError"),
+        fallback:feedback("authenticationFailed"),
+      }));
+      return false;
+    }
+    router.replace(payload.role==="PATIENT"&&returnTo?returnTo:`/${payload.role.toLowerCase()}/dashboard`);
+    return true;
   }
   async function submit(v:Values){
-    setMessage("");if(!firebaseAuth){setMessage("Firebase is not configured. Add the web credentials to .env.local.");return}
+    setMessage("");if(!firebaseAuth){toast.error(t("firebaseConfig"));return}
     setBusy(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       if(mode==="forgot"){await sendPasswordResetEmail(firebaseAuth,v.email);setMessage("Password reset email sent.");}
-      else if(mode==="register"){const credential=await createUserWithEmailAndPassword(firebaseAuth,v.email,v.password!);await updateProfile(credential.user,{displayName:v.name!.trim()});await sendEmailVerification(credential.user);await session("PATIENT");}
-      else{await signInWithEmailAndPassword(firebaseAuth,v.email,v.password!);await session(selectedRole);}
-    }catch(error){setMessage(error instanceof Error?error.message:"Unable to continue. Please try again.");}
-    finally{setBusy(false)}
+      else if(mode==="register"){
+        const credential=await createUserWithEmailAndPassword(firebaseAuth,v.email,v.password!);
+        await updateProfile(credential.user,{displayName:v.name!.trim()});
+        await sendEmailVerification(credential.user);
+        if(await session("PATIENT"))toast.success(feedback("registrationSuccess"));
+      }else{
+        await signInWithEmailAndPassword(firebaseAuth,v.email,v.password!);
+        if(await session(selectedRole))toast.success(feedback("loginSuccess"));
+      }
+    }catch{toast.error(feedback("authenticationFailed"))}
+    finally{toast.dismiss(loadingToast);setBusy(false)}
   }
   async function google(){
-    if(!firebaseAuth){setMessage("Firebase is not configured. Add the web credentials to .env.local.");return}
-    setBusy(true);setMessage("");try{await signInWithPopup(firebaseAuth,new GoogleAuthProvider());await session(selectedRole)}catch(error){setMessage(error instanceof Error?error.message:"Google sign-in failed.")}finally{setBusy(false)}
+    if(!firebaseAuth){toast.error(t("firebaseConfig"));return}
+    setBusy(true);setMessage("");const loadingToast=toast.loading(feedback("processing"));
+    try{await signInWithPopup(firebaseAuth,new GoogleAuthProvider());if(await session(selectedRole))toast.success(feedback("loginSuccess"))}
+    catch{toast.error(feedback("authenticationFailed"))}
+    finally{toast.dismiss(loadingToast);setBusy(false)}
   }
   return <form className="tw-auth-form grid gap-[15px]" onSubmit={handleSubmit(submit)} noValidate>
     {mode==="register"&&<Field label={t("name")} icon={<UserRound size={17}/>} error={errors.name?.message}><input autoComplete="name" placeholder="Alex Morgan" {...register("name")}/></Field>}
-    {mode==="sign-in"&&<div className="tw-role-picker grid gap-[9px] m-[3px_0_4px]"><span className="tw-role-picker-label [color:var(--text)] text-[length:12px] font-bold">{t("chooseRole")}</span><div className="tw-role-options grid grid-cols-[repeat(3,minmax(0,1fr))] gap-[7px] [@media(max-width:420px)]:gap-[5px]" role="group" aria-label={t("chooseRole")}>{roleOptions.map(({value,label,icon:Icon})=><button type="button" className={`tw-role-option min-h-[44px] flex items-center justify-center gap-[7px] p-[8px_5px] [border:1px_solid_var(--line)] rounded-[10px] [background:var(--surface)] [color:var(--muted)] text-[length:11px] [font-weight:650] [transition:border-color_.18s,background_.18s,color_.18s,box-shadow_.18s] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)] [@media(max-width:420px)]:gap-[4px] [@media(max-width:420px)]:text-[length:10px] [@media(max-width:420px)]:p-[7px_3px] [@media(max-width:420px)]:[&_svg]:w-[14px] [@media(max-width:420px)]:[&_svg]:h-[14px] ${selectedRole===value?"tw-is-selected [.tw-role-option&]:border-[color:var(--teal)] [.tw-role-option&]:[background:var(--mint)] [.tw-role-option&]:[color:var(--teal-dark)] [.tw-role-option&]:shadow-[inset_0_0_0_1px_var(--teal)] [.tw-slot-option&]:border-[color:var(--teal)] [.tw-slot-option&]:[background:color-mix(in_srgb,var(--teal)_10%,var(--surface))] [.tw-slot-option&]:[color:var(--teal)]":""}`} aria-pressed={selectedRole===value} key={value} onClick={()=>{setSelectedRole(value);setMessage("")}}><Icon size={16}/><span>{t(label)}</span></button>)}</div></div>}
+    {mode==="sign-in"&&<div className="tw-role-picker grid gap-[9px] m-[3px_0_4px]"><span className="tw-role-picker-label [color:var(--text)] text-[length:12px] font-bold">{t("chooseRole")}</span><div className="tw-role-options grid grid-cols-[repeat(4,minmax(0,1fr))] gap-[7px] [@media(max-width:420px)]:gap-[5px]" role="group" aria-label={t("chooseRole")}>{roleOptions.map(({value,label,icon:Icon})=><button type="button" className={`tw-role-option min-h-[44px] flex items-center justify-center gap-[7px] p-[8px_5px] [border:1px_solid_var(--line)] rounded-[10px] [background:var(--surface)] [color:var(--muted)] text-[length:11px] [font-weight:650] [transition:border-color_.18s,background_.18s,color_.18s,box-shadow_.18s] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)] [@media(max-width:420px)]:gap-[4px] [@media(max-width:420px)]:text-[length:10px] [@media(max-width:420px)]:p-[7px_3px] [@media(max-width:420px)]:[&_svg]:w-[14px] [@media(max-width:420px)]:[&_svg]:h-[14px] ${selectedRole===value?"tw-is-selected [.tw-role-option&]:border-[color:var(--teal)] [.tw-role-option&]:[background:var(--mint)] [.tw-role-option&]:[color:var(--teal-dark)] [.tw-role-option&]:shadow-[inset_0_0_0_1px_var(--teal)] [.tw-slot-option&]:border-[color:var(--teal)] [.tw-slot-option&]:[background:color-mix(in_srgb,var(--teal)_10%,var(--surface))] [.tw-slot-option&]:[color:var(--teal)]":""}`} aria-pressed={selectedRole===value} key={value} onClick={()=>{setSelectedRole(value);setMessage("")}}><Icon size={16}/><span>{t(label)}</span></button>)}</div></div>}
     {mode==="register"&&<p className="tw-role-registration-note m-[0_0_4px] [color:var(--muted)] text-[length:11px] leading-[1.55]">{t("patientOnlyRegistration")}</p>}
     <Field label={t("email")} icon={<Mail size={17}/>} error={errors.email?.message}><input type="email" autoComplete="email" placeholder="you@example.com" {...register("email")}/></Field>
     {mode!=="forgot"&&<>    <Field label={t("password")} icon={<LockKeyhole size={17}/>} error={errors.password?.message}><input type={show?"text":"password"} autoComplete={mode==="register"?"new-password":"current-password"} placeholder="••••••••" {...register("password")}/><button type="button" className="tw-field-eye [border:0] [background:transparent] [color:var(--muted)] flex" aria-label={t(show?"hidePassword":"showPassword")} onClick={()=>setShow(!show)}>{show?<EyeOff size={17}/>:<Eye size={17}/>}</button></Field>{mode==="register"&&<Field label={t("confirmPassword")} icon={<LockKeyhole size={17}/>} error={errors.confirmPassword?.message}><input type={show?"text":"password"} autoComplete="new-password" placeholder="••••••••" {...register("confirmPassword")}/></Field>}</>}

@@ -28,7 +28,7 @@ export async function listAppointments(request:Request,roles:UserRole[]){
     const [data,total]=await Promise.all([
       prisma.appointment.findMany({
         where,skip:(page-1)*limit,take:limit,orderBy:{startAt:period==="previous"?"desc":"asc"},
-        include:{doctor:{select:{id:true,name:true,specialization:true}},service:{select:{id:true,name:true,durationMinutes:true,price:true}},chair:{select:{id:true,name:true}}},
+        include:{doctor:{select:{id:true,name:true,specialization:true}},service:{select:{id:true,name:true,durationMinutes:true,price:true,isOnlineConsultation:true}},chair:{select:{id:true,name:true}}},
       }),
       prisma.appointment.count({where}),
     ]);

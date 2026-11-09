@@ -28,7 +28,7 @@ export async function PATCH(request:Request,{params}:RouteContext){
       const updated=await tx.timeOff.update({where:{id},data:merged.data,include:{doctor:{select:{id:true,name:true}}}});
       await logAdminAction(tx,access.user,"UPDATE","TimeOff",id,{startAt:updated.startAt.toISOString(),endAt:updated.endAt.toISOString(),reason:updated.reason});
       return {kind:"updated" as const,record:updated};
-    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
+    },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted,maxWait:10_000,timeout:20_000});
     if(result.kind==="missing")return apiError("TIME_OFF_NOT_FOUND","Leave entry not found.",404);
     if(result.kind==="invalid")return apiError("INVALID_TIME_OFF","Leave details are invalid.",400,result.details);
     if(result.kind==="leave-overlap")return apiError("TIME_OFF_OVERLAP","This leave overlaps another leave entry.",409);

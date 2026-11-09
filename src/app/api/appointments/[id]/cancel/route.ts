@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {UserRole} from "@prisma/client";
 import {apiError,authorizeApi} from "@/lib/api/responses";
 import {cancelAppointment} from "@/lib/appointments/booking.service";
+import {omitStaffNotes} from "@/lib/appointments/patient-data";
 import {cancellationSchema} from "@/lib/appointments/schemas";
 
 type Context={params:Promise<{id:string}>};
@@ -14,5 +15,5 @@ export async function PATCH(request:Request,{params}:Context){
   const {id}=await params;
   const result=await cancelAppointment({id:access.user.id,role:access.user.role},id,parsed.data.reason);
   if(result.kind==="failure")return apiError(result.code,result.message,result.status);
-  return NextResponse.json({data:result.appointment});
+  return NextResponse.json({data:access.user.role===UserRole.PATIENT?omitStaffNotes(result.appointment):result.appointment});
 }

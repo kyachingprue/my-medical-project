@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {buildAppointmentEmail,getNotificationSubject} from "./email";
+import {buildAppointmentEmail,getNotificationSubject,isAppointmentReminderDue} from "./email";
 
 test("includes the updated appointment details in a reschedule email", () => {
   const appointment = {
@@ -58,4 +58,11 @@ test("escapes patient-controlled values in the HTML email", () => {
   const result = buildAppointmentEmail("APPOINTMENT_CONFIRMATION", appointment);
   assert.doesNotMatch(result.html, /<img src=x/);
   assert.match(result.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test("sends reminders only within the configured 24-hour window",()=>{
+  const now=new Date("2026-11-09T12:00:00.000Z");
+  assert.equal(isAppointmentReminderDue(new Date("2026-11-10T12:00:00.000Z"),now),true);
+  assert.equal(isAppointmentReminderDue(new Date("2026-11-10T12:06:00.000Z"),now),false);
+  assert.equal(isAppointmentReminderDue(new Date("2026-11-10T11:54:00.000Z"),now),false);
 });

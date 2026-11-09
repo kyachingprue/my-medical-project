@@ -23,6 +23,7 @@ export const serviceSchema=z.object({
   price:z.number().finite().min(0).max(99999999.99),
   image:optionalUrl,
   isActive:z.boolean().optional(),
+  isOnlineConsultation:z.boolean().optional(),
 });
 export const servicePatchSchema=serviceSchema.partial().refine(value=>Object.keys(value).length>0);
 

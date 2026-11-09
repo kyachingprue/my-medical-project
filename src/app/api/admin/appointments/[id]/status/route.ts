@@ -1,10 +1,12 @@
 import {NextResponse} from "next/server";
-import {AppointmentStatus,UserRole} from "@prisma/client";
+import {AppointmentStatus,IntegrationType,UserRole} from "@prisma/client";
 import {apiError,authorizeApi} from "@/lib/api/responses";
 import {appointmentStatusSchema} from "@/lib/appointments/schemas";
 import {createAppointmentNotification,scheduleAppointmentNotification} from "@/lib/notifications/email";
 import {logUserAction} from "@/lib/management/audit";
 import {prisma} from "@/lib/prisma";
+import {queueAppointmentIntegrations} from "@/lib/integrations/appointments";
+import {notifyWaitlistForOpenedAppointment} from "@/lib/appointments/waitlist.service";
 
 type Context={params:Promise<{id:string}>};
 export async function PATCH(request:Request,{params}:Context){
@@ -19,8 +21,10 @@ export async function PATCH(request:Request,{params}:Context){
       const current=await tx.appointment.findUnique({where:{id},select:{id:true,status:true}});
       if(!current)return null;
       if(current.status!==AppointmentStatus.CONFIRMED)return {conflict:true as const};
-      const updated=await tx.appointment.update({where:{id},data:{status:parsed.data.status,cancellationReason:parsed.data.status===AppointmentStatus.CANCELLED?parsed.data.cancellationReason??null:null},include:{patient:{select:{id:true,name:true,email:true,phone:true}},doctor:{select:{id:true,name:true}},service:{select:{id:true,name:true,durationMinutes:true}},chair:{select:{id:true,name:true}}}});
+      const updated=await tx.appointment.update({where:{id},data:{status:parsed.data.status,cancellationReason:parsed.data.status===AppointmentStatus.CANCELLED?parsed.data.cancellationReason??null:null},include:{patient:{select:{id:true,name:true,email:true,phone:true,smsNotificationsEnabled:true}},doctor:{select:{id:true,name:true}},service:{select:{id:true,name:true,durationMinutes:true}},chair:{select:{id:true,name:true}}}});
       const notificationId=updated.status===AppointmentStatus.CANCELLED?await createAppointmentNotification(tx,{type:"APPOINTMENT_CANCELLATION",appointment:updated,userId:updated.patientId,recipientEmail:updated.patient?.email}):null;
+      if(updated.status===AppointmentStatus.CANCELLED)await queueAppointmentIntegrations(tx,updated,IntegrationType.CANCELLATION,{phone:updated.patient?.phone,smsEnabled:updated.patient?.smsNotificationsEnabled});
+      if(updated.status===AppointmentStatus.CANCELLED)await notifyWaitlistForOpenedAppointment(tx,updated);
       await logUserAction(tx,access.user.id,updated.status===AppointmentStatus.CANCELLED?"CANCEL":"STATUS_CHANGE","Appointment",id,{statusBefore:current.status,statusAfter:updated.status});
       return {appointment:updated,notificationId};
     },{maxWait:10_000,timeout:20_000});

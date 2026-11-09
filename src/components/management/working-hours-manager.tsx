@@ -4,9 +4,10 @@ import {zodResolver} from "@hookform/resolvers/zod";
 import {Weekday} from "@prisma/client";
 import {useTranslations} from "next-intl";
 import {useRouter} from "@/i18n/navigation";
-import {useState} from "react";
 import {useForm} from "react-hook-form";
+import {toast} from "react-hot-toast";
 import {weekdays,workingHoursSchema} from "@/lib/management/schemas";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 import type {z} from "zod";
 
 type Values=z.input<typeof workingHoursSchema>;
@@ -14,28 +15,51 @@ type DoctorOption={id:string;name:string;specialization:string};
 type HoursRecord={id:string;doctorId:string;dayOfWeek:Weekday;startTime:string;endTime:string;isActive:boolean;doctor:{name:string}};
 export function WorkingHoursManager({doctors,entries}:{doctors:DoctorOption[];entries:HoursRecord[]}){
   const t=useTranslations("management");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
-  const [error,setError]=useState("");
   const {register,handleSubmit,reset,formState:{isSubmitting}}=useForm<Values>({
     resolver:zodResolver(workingHoursSchema),
     defaultValues:{doctorId:doctors[0]?.id??"",dayOfWeek:Weekday.SATURDAY,startTime:"10:00",endTime:"13:00",copyToDays:[]},
   });
   async function submit(values:Values){
-    setError("");
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch("/api/admin/working-hours",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});
-      const result=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(result.error?.message??t("saveFailed"));
-      setError("");
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
+      }
+      toast.success(feedback("scheduleUpdated"));
       reset({...values,copyToDays:[]});
       router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:t("saveFailed"))}
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast)}
   }
   async function deactivate(id:string){
     if(!window.confirm(t("confirmDeactivate")))return;
-    const response=await fetch(`/api/admin/working-hours/${id}`,{method:"DELETE"});
-    if(!response.ok){const result=await response.json() as {error?:{message?:string}};setError(result.error?.message??t("saveFailed"));return}
-    router.refresh();
+    const loadingToast=toast.loading(feedback("processing"));
+    try{
+      const response=await fetch(`/api/admin/working-hours/${id}`,{method:"DELETE"});
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("saveFailed"),
+        }));
+        return;
+      }
+      toast.success(feedback("scheduleUpdated"));
+      router.refresh();
+    }catch{toast.error(feedback("serverError"))}
+    finally{toast.dismiss(loadingToast)}
   }
   return <div className="tw-management-stack grid gap-[18px]">
     <form className="tw-management-card [&_p]:[color:var(--muted)] [&_p]:text-[length:13px] [&_p]:leading-[1.7] [&_p]:mb-[0] min-w-[length:0] p-[24px] [border:1px_solid_var(--line)] rounded-[16px] [background:var(--surface)] shadow-[var(--shadow)] [@media(max-width:650px)]:p-[17px] tw-management-form grid gap-[18px]" onSubmit={handleSubmit(submit)}>
@@ -47,7 +71,6 @@ export function WorkingHoursManager({doctors,entries}:{doctors:DoctorOption[];en
         <label className="tw-management-field grid gap-[7px] min-w-[length:0] [color:var(--text)] text-[length:12px] [font-weight:650] [&_input]:w-[100%] [&_input]:min-h-[42px] [&_input]:p-[10px_12px] [&_input]:[border:1px_solid_var(--line)] [&_input]:rounded-[8px] [&_input]:[background:var(--bg)] [&_input]:[color:var(--text)] [&_input]:[outline:none] [&_textarea]:w-[100%] [&_textarea]:min-h-[42px] [&_textarea]:p-[10px_12px] [&_textarea]:[border:1px_solid_var(--line)] [&_textarea]:rounded-[8px] [&_textarea]:[background:var(--bg)] [&_textarea]:[color:var(--text)] [&_textarea]:[outline:none] [&_select]:w-[100%] [&_select]:min-h-[42px] [&_select]:p-[10px_12px] [&_select]:[border:1px_solid_var(--line)] [&_select]:rounded-[8px] [&_select]:[background:var(--bg)] [&_select]:[color:var(--text)] [&_select]:[outline:none] [&_textarea]:[resize:vertical] [&_input:focus]:border-[color:var(--teal)] [&_input:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_textarea:focus]:border-[color:var(--teal)] [&_textarea:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_select:focus]:border-[color:var(--teal)] [&_select:focus]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--teal)_14%,transparent)] [&_small]:[color:#b43e37] [&_small]:text-[length:11px]"><span>{t("endTime")}</span><input type="time" {...register("endTime")}/></label>
       </div>
       <div className="tw-copy-days [&_label]:flex [&_label]:items-center [&_label]:gap-[8px] [&_label]:[color:var(--muted)] [&_label]:text-[length:12px] [&_input]:[accent-color:var(--teal)] grid gap-[10px] [color:var(--muted)] text-[length:12px] [&>div]:flex [&>div]:[flex-wrap:wrap] [&>div]:gap-[13px]"><span>{t("copyScheduleTo")}</span><div>{weekdays.filter(day=>day!==Weekday.FRIDAY).map(day=><label key={day}><input type="checkbox" value={day} {...register("copyToDays")}/>{t(`day_${day}`)}</label>)}</div></div>
-      {error&&<p className="tw-management-error m-[0] [color:#b43e37] text-[length:12px]" role="alert">{error}</p>}
       <button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-primary [background:var(--teal)] [color:white] shadow-[0_7px_18px_color-mix(in_srgb,var(--teal)_25%,transparent)] [&:hover]:[background:var(--teal-dark)] [&_span]:text-[length:17px]" disabled={isSubmitting||!doctors.length}>{isSubmitting?t("saving"):t("saveSchedule")}</button>
     </form>
     <div className="tw-management-card [&_p]:[color:var(--muted)] [&_p]:text-[length:13px] [&_p]:leading-[1.7] [&_p]:mb-[0] min-w-[length:0] p-[24px] [border:1px_solid_var(--line)] rounded-[16px] [background:var(--surface)] shadow-[var(--shadow)] [@media(max-width:650px)]:p-[17px]"><span className="tw-section-kicker text-[length:10px] tracking-[1.55px] font-extrabold [color:var(--teal)] inline-flex items-center gap-[9px] [.tw-cta-section_&]:[color:#b4ded2] [.tw-dashboard-subpage_&]:block [.tw-dashboard-subpage_&]:text-center">{t("weeklySchedule")}</span>{entries.length?<div className="tw-management-table-wrap w-[100%] overflow-x-auto"><table className="tw-management-table w-[100%] [border-collapse:collapse] text-left text-[length:12px] [&_th]:p-[12px] [&_th]:[color:var(--muted)] [&_th]:text-[length:10px] [&_th]:tracking-[.8px] [&_th]:uppercase [&_th]:whitespace-nowrap [&_td]:p-[14px_12px] [&_td]:[border-top:1px_solid_var(--line)] [&_td]:align-[middle] [&_td_small]:block [&_td_strong]:block [&_td_small]:mt-[5px] [&_td_small]:[color:var(--muted)] [&_td_small]:text-[length:11px] [&_td_small]:max-w-[length:340px] [&_td_small]:leading-[1.5] [@media(max-width:650px)]:[&_th]:p-[11px_9px] [@media(max-width:650px)]:[&_td]:p-[11px_9px]"><thead><tr><th>{t("doctor")}</th><th>{t("weekday")}</th><th>{t("hours")}</th><th>{t("status")}</th><th>{t("actions")}</th></tr></thead><tbody>{entries.map(entry=><tr key={entry.id}><td>{entry.doctor.name}</td><td>{t(`day_${entry.dayOfWeek}`)}</td><td>{entry.startTime}–{entry.endTime}</td><td><span className={`tw-status-badge inline-flex p-[5px_9px] rounded-[999px] text-[length:10px] font-[750] ${entry.isActive?"tw-is-active [@media(min-width:761px)]:[.tw-main-nav>a&]:[background:var(--mint)] [@media(min-width:761px)]:[.tw-main-nav>a&]:[color:var(--teal-dark)] [@media(min-width:761px)]:[.tw-main-nav>a&]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--teal)_14%,transparent)] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:[content:''] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:absolute [@media(min-width:761px)]:[.tw-main-nav>a&:after]:left-[50%] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:bottom-[4px] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:w-[13px] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:h-[2px] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:rounded-[2px] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:[background:var(--teal)] [@media(min-width:761px)]:[.tw-main-nav>a&:after]:[transform:translateX(-50%)] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:flex [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:items-center [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:[color:var(--teal-dark)] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:[background:var(--mint)] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:[border-bottom-color:transparent] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:rounded-[8px] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:pl-[10px] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:[content:''] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:w-[3px] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:self-stretch [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:rounded-[3px] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:[background:var(--teal)] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&:before]:mr-[8px] [@media(max-width:760px)]:[.tw-main-nav.tw-is-open>a&]:pl-[12px] [.tw-status-badge&]:[background:var(--mint)] [.tw-status-badge&]:[color:var(--teal-dark)]":"tw-is-inactive [.tw-status-badge&]:[background:var(--peach)] [.tw-status-badge&]:[color:#8e573d]"}`}>{entry.isActive?t("active"):t("inactive")}</span></td><td>{entry.isActive&&<button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-outline border-[color:var(--line)] [color:var(--text)] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)]" type="button" onClick={()=>deactivate(entry.id)}>{t("deactivate")}</button>}</td></tr>)}</tbody></table></div>:<p className="tw-management-empty p-[38px_24px] text-center [border:1px_dashed_var(--line)] rounded-[14px] [background:var(--surface)] [&_h2]:mb-[7px] [&_h2]:text-[length:17px] [&_p]:m-[0] [&_p]:[color:var(--muted)] [&_p]:text-[length:13px]">{t("noSchedule")}</p>}</div>

@@ -5,12 +5,13 @@ import {requireRole} from "@/lib/auth/authorize";
 import {RetryNotificationButton} from "@/components/management/retry-notification-button";
 import {DeleteNotificationButton} from "@/components/management/delete-notification-button";
 import {getTranslations} from "next-intl/server";
+import {RetryIntegrationButton} from "@/components/management/retry-integration-button";
 
 export const instant=false;
 
 type Props = {
   params: Promise<{locale: string}>;
-  searchParams: Promise<{page?: string}>;
+  searchParams: Promise<{page?: string;integrationPage?:string}>;
 };
 
 export default async function AdminNotificationsPage({params,searchParams}:Props) {
@@ -19,17 +20,23 @@ export default async function AdminNotificationsPage({params,searchParams}:Props
   await connection();
   const t=await getTranslations("notificationUi");
   const ui=await getTranslations("notificationEnhancement");
-  const requestedPage=Number((await searchParams).page);
+  const search=await searchParams;
+  const requestedPage=Number(search.page);
+  const requestedIntegrationPage=Number(search.integrationPage);
   const page=Number.isInteger(requestedPage)&&requestedPage>0?requestedPage:1;
+  const integrationPage=Number.isInteger(requestedIntegrationPage)&&requestedIntegrationPage>0?requestedIntegrationPage:1;
   const limit=20;
-  const [total,pending,sent,failed]=await Promise.all([
+  const [total,pending,sent,failed,integrationTotal]=await Promise.all([
     prisma.notificationLog.count(),
     prisma.notificationLog.count({where:{status:"PENDING"}}),
     prisma.notificationLog.count({where:{status:"SENT"}}),
     prisma.notificationLog.count({where:{status:"FAILED"}}),
+    prisma.integrationLog.count(),
   ]);
   const totalPages=Math.max(1,Math.ceil(total/limit));
   const currentPage=Math.min(page,totalPages);
+  const totalIntegrationPages=Math.max(1,Math.ceil(integrationTotal/limit));
+  const currentIntegrationPage=Math.min(integrationPage,totalIntegrationPages);
   const items=await prisma.notificationLog.findMany({
     orderBy:{createdAt:"desc"},
     skip:(currentPage-1)*limit,
@@ -51,6 +58,12 @@ export default async function AdminNotificationsPage({params,searchParams}:Props
         startAt:true,
       }},
     },
+  });
+  const integrations=await prisma.integrationLog.findMany({
+    orderBy:{createdAt:"desc"},
+    skip:(currentIntegrationPage-1)*limit,
+    take:limit,
+    include:{appointment:{select:{patientName:true,patient:{select:{name:true}},doctor:{select:{name:true}},service:{select:{name:true}},startAt:true}}},
   });
 
   return <section className="tw-management-page grid gap-[22px] max-w-[length:1180px] m-[0_auto]">
@@ -94,5 +107,15 @@ export default async function AdminNotificationsPage({params,searchParams}:Props
         {currentPage<totalPages?<a className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-outline border-[color:var(--line)] [color:var(--text)] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)]" href={`?page=${currentPage+1}`}>{t("next")}</a>:null}
       </div>
     </nav>
+    <section className="grid gap-4 border-t border-[var(--line)] pt-6">
+      <header><h2 className="m-0 text-xl font-semibold text-[var(--text)]">{t("integrationsTitle")}</h2><p className="mb-0 mt-1 text-sm text-[var(--muted)]">{t("integrationsDescription")}</p></header>
+      {!integrations.length?<p className="m-0 text-sm text-[var(--muted)]">{t("integrationsEmpty")}</p>:<div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{integrations.map(item=><article key={item.id} className="grid min-w-0 gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+        <div className="flex items-start justify-between gap-2"><strong className="text-sm text-[var(--text)]">{t(`channel_${item.channel}`)} · {t(`type_${item.type}`)}</strong><span className="text-xs font-semibold text-[var(--muted)]">{t(`status_${item.status}`)}</span></div>
+        <p className="m-0 break-all text-xs text-[var(--muted)]">{item.appointment.patient?.name??item.appointment.patientName} · {item.recipient}</p>
+        {item.providerMessage&&<p className="m-0 break-words text-xs text-rose-700">{item.providerMessage}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-3"><span className="text-xs text-[var(--muted)]">{t("attempts",{count:item.attempts})}</span>{item.status==="FAILED"&&item.attempts<5?<RetryIntegrationButton id={item.id}/>:null}</div>
+      </article>)}</div>}
+      {integrationTotal>limit?<nav className="flex items-center justify-between gap-3 text-xs" aria-label={t("integrationsTitle")}><span className="text-[var(--muted)]">{t("pageSummary",{page:currentIntegrationPage,totalPages:totalIntegrationPages})}</span><div className="flex gap-2">{currentIntegrationPage>1?<a className="rounded-lg border border-[var(--line)] px-3 py-2 text-[var(--text)]" href={`?page=${currentPage}&integrationPage=${currentIntegrationPage-1}`}>{t("previous")}</a>:null}{currentIntegrationPage<totalIntegrationPages?<a className="rounded-lg border border-[var(--line)] px-3 py-2 text-[var(--text)]" href={`?page=${currentPage}&integrationPage=${currentIntegrationPage+1}`}>{t("next")}</a>:null}</div></nav>:null}
+    </section>
   </section>;
 }

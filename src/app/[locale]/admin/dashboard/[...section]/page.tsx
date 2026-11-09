@@ -10,6 +10,11 @@ import {AdminUserManager,type AdminUser} from "@/components/management/admin-use
 import {LiveFilters} from "@/components/management/live-filters";
 import {UserRole} from "@prisma/client";
 import {prisma} from "@/lib/prisma";
+import {getTranslations} from "next-intl/server";
+import {WorkingHoursManager} from "@/components/management/working-hours-manager";
+import {TimeOffManager} from "@/components/management/time-off-manager";
+import {ClinicalRecordManager} from "@/components/clinical/clinical-record-manager";
+import {WaitlistManager} from "@/components/appointments/waitlist-manager";
 
 const sectionKeys: Record<string, string> = {
   appointments: "appointments",
@@ -20,6 +25,9 @@ const sectionKeys: Record<string, string> = {
   patients: "patients",
   receptionists: "receptionists",
   reports: "reports",
+  analytics:"reports",
+  "medical-records":"medicalRecords",
+  "waiting-list":"waitingList",
   settings: "settings",
 };
 
@@ -28,8 +36,40 @@ export default async function AdminDashboardSection({params,searchParams}: {para
   const actor=await requireRole("ADMIN", locale);
   const key = sectionKeys[section[0]];
   if (!key || section.length !== 1) notFound();
-  if(section[0]==="reports")return <Suspense fallback={<DashboardLoading kind="analytics" label="Loading reports"/>}><AnalyticsDashboard/></Suspense>;
+  if(section[0]==="reports"||section[0]==="analytics")return <Suspense fallback={<DashboardLoading kind="analytics" label="Loading reports"/>}><AnalyticsDashboard/></Suspense>;
   if(section[0]==="settings")return <AdminSettings/>;
+  if(section[0]==="working-hours"){
+    const [doctors,entries,t]=await Promise.all([
+      prisma.doctor.findMany({where:{isActive:true},select:{id:true,name:true,specialization:true},orderBy:{name:"asc"}}),
+      prisma.workingHours.findMany({include:{doctor:{select:{name:true}}},orderBy:[{doctor:{name:"asc"}},{dayOfWeek:"asc"},{startTime:"asc"}]}),
+      getTranslations("management"),
+    ]);
+    return <ManagementSection title={t("workingHours")} description={t("schedulesHelp")}><WorkingHoursManager doctors={doctors} entries={entries}/></ManagementSection>;
+  }
+  if(section[0]==="time-off"){
+    const [doctors,entries,t]=await Promise.all([
+      prisma.doctor.findMany({where:{isActive:true},select:{id:true,name:true,specialization:true},orderBy:{name:"asc"}}),
+      prisma.timeOff.findMany({where:{endAt:{gte:new Date()}},include:{doctor:{select:{name:true}}},orderBy:{startAt:"asc"}}),
+      getTranslations("management"),
+    ]);
+    return <ManagementSection title={t("doctorLeave")} description={t("timeOffHelp")}><TimeOffManager doctors={doctors} entries={entries}/></ManagementSection>;
+  }
+  if(section[0]==="medical-records"){
+    const [patients,records,prescriptions]=await Promise.all([
+      prisma.user.findMany({where:{role:UserRole.PATIENT},select:{id:true,name:true,email:true},orderBy:{name:"asc"},take:1000}),
+      prisma.patientHealthRecord.findMany({include:{patient:{select:{name:true}},createdBy:{select:{name:true}}},orderBy:{recordedAt:"desc"},take:50}),
+      prisma.prescription.findMany({include:{patient:{select:{name:true}},createdBy:{select:{name:true}}},orderBy:{issuedAt:"desc"},take:50}),
+    ]);
+    return <ClinicalRecordManager patients={patients} records={records} prescriptions={prescriptions} locale={locale}/>;
+  }
+  if(section[0]==="waiting-list"){
+    const [entries,services,doctors]=await Promise.all([
+      prisma.appointmentWaitlistEntry.findMany({where:{status:{in:["WAITING","CONTACTED"]}},orderBy:{createdAt:"asc"},include:{patient:{select:{id:true,name:true,email:true}},doctor:{select:{id:true,name:true}},service:{select:{id:true,name:true}}},take:500}),
+      prisma.service.findMany({where:{isActive:true},select:{id:true,name:true},orderBy:{name:"asc"}}),
+      prisma.doctor.findMany({where:{isActive:true},select:{id:true,name:true},orderBy:{name:"asc"}}),
+    ]);
+    return <WaitlistManager role="admin" entries={entries} services={services} doctors={doctors}/>;
+  }
   if(section[0]==="patients"||section[0]==="receptionists"){
     const filters=await searchParams;
     const query=filters.q?.trim().slice(0,100);
@@ -55,6 +95,13 @@ export default async function AdminDashboardSection({params,searchParams}: {para
     return <AdminUsersContent translationKey={key} users={users} actorId={actor.id} query={query??""} verification={verification} page={page} total={total}/>;
   }
   return <AdminSectionContent translationKey={key} />;
+}
+
+function ManagementSection({title,description,children}:{title:string;description:string;children:React.ReactNode}){
+  return <section className="grid gap-[22px]">
+    <header className="grid gap-2"><span className="text-xs font-bold tracking-[.15em] text-[var(--teal)]">CLINIC OPERATIONS</span><h1 className="m-0 text-3xl font-semibold tracking-tight text-[var(--text)]">{title}</h1><p className="m-0 max-w-3xl text-sm leading-6 text-[var(--muted)]">{description}</p></header>
+    {children}
+  </section>;
 }
 
 function AdminSectionContent({translationKey}: {translationKey: string}) {

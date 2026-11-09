@@ -4,23 +4,35 @@ import {useTranslations} from "next-intl";
 import {useRouter} from "next/navigation";
 import {useState} from "react";
 import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 export function DeleteNotificationButton({id}:{id:string}){
   const t=useTranslations("notificationUi");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
   const [busy,setBusy]=useState(false);
 
   async function remove(){
     setBusy(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch(`/api/admin/notifications/${id}`,{method:"DELETE"});
-      const body=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(body.error?.message??t("deleteFailed"));
+      const body=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,body.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("deleteFailed"),
+        }));
+        return;
+      }
       toast.success(t("deleteSuccess"));
       router.refresh();
-    }catch(cause){
-      toast.error(cause instanceof Error?cause.message:t("deleteFailed"));
+    }catch{
+      toast.error(feedback("serverError"));
     }finally{
+      toast.dismiss(loadingToast);
       setBusy(false);
     }
   }

@@ -47,7 +47,7 @@ export function AnalyticsDashboard(){
       const chartData=Object.fromEntries(results);
       setResult({queryKey,summary:overview,charts:chartData,noShow:noShowResult??null});
       setFailure(null);
-    }).catch(cause=>{if(active)setFailure({queryKey,message:cause instanceof Error?cause.message:t("loadFailed")})});
+    }).catch(()=>{if(active)setFailure({queryKey,message:t("loadFailed")})});
     return ()=>{active=false};
   },[period,from,to,queryKey,t]);
 
@@ -108,7 +108,7 @@ function ChartEmpty({rows,t,children}:{rows:unknown[];t:ReturnType<typeof useTra
 
 async function readBody<T>(response:Response){
   const result=await response.json() as ApiData<T>;
-  if(!response.ok)throw new Error(result.error?.message??"Unable to load analytics.");
+  if(!response.ok)throw new Error("Unable to load analytics.");
   return result.data;
 }
 

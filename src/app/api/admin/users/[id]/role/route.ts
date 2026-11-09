@@ -18,18 +18,23 @@ export async function PATCH(request:Request,{params}:Context){
 
   try{
     const result=await prisma.$transaction(async tx=>{
-      const current=await tx.user.findUnique({where:{id},select:{id:true,role:true}});
+      const current=await tx.user.findUnique({where:{id},select:{id:true,role:true,email:true}});
       if(!current)return {kind:"missing" as const};
       if(current.role===parsed.data.role)return {kind:"unchanged" as const,role:current.role};
+      const doctor=parsed.data.role===UserRole.DOCTOR
+        ?await tx.doctor.findUnique({where:{email:current.email},select:{id:true}})
+        :null;
+      if(parsed.data.role===UserRole.DOCTOR&&!doctor)return {kind:"doctor-missing" as const};
       if(current.role===UserRole.ADMIN&&parsed.data.role!==UserRole.ADMIN){
         const admins=await tx.user.count({where:{role:UserRole.ADMIN}});
         if(admins<=1)return {kind:"last-admin" as const};
       }
-      const updated=await tx.user.update({where:{id},data:{role:parsed.data.role},select:{id:true,role:true}});
+      const updated=await tx.user.update({where:{id},data:{role:parsed.data.role,doctorId:doctor?.id??null},select:{id:true,role:true}});
       await logAdminAction(tx,access.user,"ROLE_CHANGE","User",id,{roleBefore:current.role,roleAfter:updated.role});
       return {kind:"updated" as const,user:updated};
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
     if(result.kind==="missing")return apiError("USER_NOT_FOUND","User not found.",404);
+    if(result.kind==="doctor-missing")return apiError("DOCTOR_ACCOUNT_NOT_FOUND","Create a doctor profile with this user's email before assigning the Doctor role.",409);
     if(result.kind==="last-admin")return apiError("LAST_ADMIN_REQUIRED","At least one Admin account must remain.",409);
     if(result.kind==="unchanged")return NextResponse.json({data:{id,role:result.role}});
     return NextResponse.json({data:result.user});

@@ -4,21 +4,33 @@ import {useTranslations} from "next-intl";
 import {useState} from "react";
 import {useRouter} from "next/navigation";
 import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
 
 export function RetryNotificationButton({id}:{id:string}){
   const t=useTranslations("notificationUi");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
   const [busy,setBusy]=useState(false);
   async function retry(){
     setBusy(true);
+    const loadingToast=toast.loading(feedback("processing"));
     try{
       const response=await fetch(`/api/admin/notifications/${id}/retry`,{method:"PATCH"});
-      const result=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(result.error?.message??"Could not retry this notification.");
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("retryFailed"),
+        }));
+        return;
+      }
       toast.success(t("retrySuccess"));
-    }catch(cause){
-      toast.error(cause instanceof Error?cause.message:t("retryFailed"),{duration:8000});
+    }catch{
+      toast.error(feedback("serverError"),{duration:8000});
     }finally{
+      toast.dismiss(loadingToast);
       setBusy(false);
       router.refresh();
     }

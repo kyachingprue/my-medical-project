@@ -1,52 +1,109 @@
 "use client";
 
-import {CalendarDays,Clock3,MapPin,Stethoscope} from "lucide-react";
+import {CalendarDays,Clock3,MapPin,Stethoscope,Video} from "lucide-react";
 import {useTranslations} from "next-intl";
+import type {LucideIcon} from "lucide-react";
 import {Link,useRouter} from "@/i18n/navigation";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 import {toast} from "react-hot-toast";
+import {getSafeApiErrorMessage} from "@/lib/api/client-errors";
+import {AppointmentNotesEditor} from "./appointment-notes-editor";
 
-type Props={role:"patient"|"receptionist"|"admin";appointment:{id:string;patientName:string;patientPhone:string|null;startAt:string;endAt:string;status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;doctor:{id:string;name:string;specialization:string};service:{id:string;name:string;durationMinutes:number;price:number|string};chair:{id:string;name:string}}};
+type Props={
+  role:"patient"|"receptionist"|"admin"|"doctor";
+  appointment:{
+    id:string;patientName:string;patientPhone:string|null;patientNote:string|null;staffNotes:string|null;
+    startAt:string;endAt:string;videoRoomName:string|null;
+    status:"CONFIRMED"|"COMPLETED"|"CANCELLED"|"NO_SHOW";cancellationReason:string|null;
+    doctor:{id:string;name:string;specialization:string};
+    service:{id:string;name:string;durationMinutes:number;price:number|string;isOnlineConsultation?:boolean};
+    chair:{id:string;name:string};
+  };
+};
+
 export function AppointmentDetails({role,appointment}:Props){
   const t=useTranslations("appointments");
+  const feedback=useTranslations("feedback");
   const router=useRouter();
-  const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
+  const [now,setNow]=useState(0);
   const dateFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",dateStyle:"full"});
   const timeFormat=new Intl.DateTimeFormat(undefined,{timeZone:"Asia/Dhaka",hour:"numeric",minute:"2-digit"});
+
+  useEffect(()=>{
+    const update=()=>setNow(Date.now());
+    update();
+    const timer=setInterval(update,30_000);
+    return ()=>clearInterval(timer);
+  },[]);
+
   async function cancel(){
-    setBusy(true);setError("");
+    setBusy(true);
+    const loading=toast.loading(feedback("processing"));
     try{
       const response=await fetch(`/api/appointments/${appointment.id}/cancel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
-      const result=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(result.error?.message??t("cancelFailed"));
-      toast.success(t("cancelled"));
+      const result=await response.json() as {error?:{code?:string}};
+      if(!response.ok){
+        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+          permissionError:feedback("permissionError"),
+          serverError:feedback("serverError"),
+          validationError:feedback("validationError"),
+          fallback:t("cancelFailed"),
+        }));
+        return;
+      }
+      toast.success(feedback("appointmentCancelled"));
       router.refresh();
-    }catch(cause){
-      const message=cause instanceof Error?cause.message:t("cancelFailed");
-      setError(message);
-      toast.error(message);
+    }catch{
+      toast.error(feedback("serverError"));
+    }finally{
+      toast.dismiss(loading);
+      setBusy(false);
     }
-    finally{setBusy(false)}
   }
-  const listUrl=role==="patient"?"/patient/dashboard/bookings":role==="admin"?"/admin/dashboard/appointments":"/receptionist/dashboard/appointments";
+
+  const listUrl=role==="patient"?"/patient/dashboard/bookings":role==="admin"?"/admin/dashboard/appointments":role==="doctor"?"/doctor/dashboard/appointments":"/receptionist/dashboard/appointments";
   const rescheduleUrl=role==="patient"?`/patient/dashboard/bookings/${appointment.id}/reschedule`:role==="admin"?`/admin/dashboard/appointments/${appointment.id}/reschedule`:`/receptionist/dashboard/appointments/${appointment.id}/reschedule`;
-  return <section className="tw-appointment-details min-w-[length:0]">
-    <Link className="tw-back-link flex items-center gap-[7px] [color:var(--muted)] text-[length:10px] [&:hover]:[color:var(--teal-dark)] [&:hover]:underline w-[max-content] text-[length:12px]" href={listUrl}>← {t("backToAppointments")}</Link>
-    <article className="tw-appointment-detail-card p-[clamp(18px,4vw,30px)] [border:1px_solid_var(--line)] rounded-[16px] [background:var(--surface)] [&>header]:pb-[18px] [&>header]:[border-bottom:1px_solid_var(--line)] [&>header_h1]:m-[12px_0_5px] [&>header_h1]:text-[length:22px] [&>header_p]:m-[0] [&>header_p]:[color:var(--muted)] [&>header_p]:text-[length:10px] [&>header_p]:[overflow-wrap:anywhere]">
-      <header><span className={`tw-appointment-status inline-flex items-center whitespace-nowrap p-[5px_8px] rounded-[20px] text-[length:9px] font-bold status-${appointment.status.toLowerCase()}`}>{t(`status_${appointment.status}`)}</span><h1>{appointment.service.name}</h1><p>{appointment.id}</p></header>
-      <div className="tw-appointment-detail-grid grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[20px] m-[22px_0] [&>div]:grid [&>div]:grid-cols-[22px_1fr] [&>div]:gap-[5px_8px] [&>div]:items-center [&_svg]:row-[span_2] [&_svg]:[color:var(--teal)] [&_svg]:w-[17px] [&_span]:[color:var(--muted)] [&_span]:text-[length:10px] [&_small]:[color:var(--muted)] [&_small]:text-[length:10px] [&_strong]:text-[length:12px] [@media(max-width:650px)]:grid-cols-[1fr]">
-        <div><CalendarDays/><span>{t("date")}</span><strong>{dateFormat.format(new Date(appointment.startAt))}</strong></div>
-        <div><Clock3/><span>{t("time")}</span><strong>{timeFormat.format(new Date(appointment.startAt))} – {timeFormat.format(new Date(appointment.endAt))}</strong></div>
-        <div><Stethoscope/><span>{t("doctor")}</span><strong>{appointment.doctor.name}</strong><small>{appointment.doctor.specialization}</small></div>
-        <div><MapPin/><span>{t("chair")}</span><strong>{appointment.chair.name}</strong></div>
-        <div><CalendarDays/><span>{t("duration")}</span><strong>{appointment.service.durationMinutes} {t("minutes")}</strong></div>
-        <div><CalendarDays/><span>{t("estimatedServiceValue")}</span><strong>৳{Number(appointment.service.price).toLocaleString()}</strong></div>
+  const meetingStart=new Date(appointment.startAt).getTime()-15*60_000;
+  const meetingEnd=new Date(appointment.endAt).getTime()+30*60_000;
+  const canJoin=now>=meetingStart&&now<=meetingEnd;
+
+  return <section className="grid gap-4">
+    <Link className="w-fit text-sm text-[var(--muted)] hover:text-[var(--teal)]" href={listUrl}>← {t("backToAppointments")}</Link>
+    <article className="grid gap-5 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] sm:p-7">
+      <header className="border-b border-[var(--line)] pb-4">
+        <span className={`tw-appointment-status inline-flex items-center whitespace-nowrap p-[5px_8px] rounded-[20px] text-[length:9px] font-bold status-${appointment.status.toLowerCase()}`}>{t(`status_${appointment.status}`)}</span>
+        <h1 className="mb-1 mt-3 text-2xl font-semibold text-[var(--text)]">{appointment.service.name}</h1>
+        <p className="m-0 text-xs text-[var(--muted)]">{appointment.id}</p>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Detail icon={CalendarDays} label={t("date")} value={dateFormat.format(new Date(appointment.startAt))}/>
+        <Detail icon={Clock3} label={t("time")} value={`${timeFormat.format(new Date(appointment.startAt))} – ${timeFormat.format(new Date(appointment.endAt))}`}/>
+        <Detail icon={Stethoscope} label={t("doctor")} value={`${appointment.doctor.name} · ${appointment.doctor.specialization}`}/>
+        <Detail icon={MapPin} label={t("chair")} value={appointment.chair.name}/>
+        <Detail icon={Clock3} label={t("duration")} value={`${appointment.service.durationMinutes} ${t("minutes")}`}/>
+        <Detail icon={CalendarDays} label={t("estimatedServiceValue")} value={`৳${Number(appointment.service.price).toLocaleString()}`}/>
       </div>
-      {role!=="patient"&&<div className="tw-appointment-patient-info grid gap-[5px] p-[13px] rounded-[9px] [background:color-mix(in_srgb,var(--teal)_7%,var(--surface))] text-[length:11px] [&_span]:[color:var(--muted)]"><strong>{t("patient")}: {appointment.patientName}</strong>{appointment.patientPhone&&<span>{appointment.patientPhone}</span>}</div>}
-      {appointment.cancellationReason&&<p className="tw-management-hint m-[0] [color:var(--muted)] text-[length:11px] leading-[1.6]">{t("cancellationReason")}: {appointment.cancellationReason}</p>}
-      {error&&<p className="tw-management-error m-[0] [color:#b43e37] text-[length:12px]" role="alert">{error}</p>}
-      {appointment.status==="CONFIRMED"&&<div className="tw-booking-actions flex justify-end gap-[9px] mt-[18px] [@media(max-width:650px)]:[justify-content:stretch] [@media(max-width:650px)]:flex-col-reverse"><Link className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-outline border-[color:var(--line)] [color:var(--text)] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)]" href={rescheduleUrl}>{t("reschedule")}</Link><button className="tw-button inline-flex justify-center items-center gap-[12px] [border:1px_solid_transparent] rounded-[9px] p-[12px_18px] text-[length:13px] font-bold [transition:transform_.2s,background_.2s,border_.2s] [&:hover]:[transform:translateY(-2px)] [.tw-cta-section_&]:relative [.tw-cta-section_&]:z-[1] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:[color:white] [@media(max-width:760px)]:[.tw-mobile-auth-actions_&]:inline-flex [.tw-management-form_&]:[justify-self:start] [.tw-appointment-cancel-toast_&]:min-h-[42px] [.tw-booking-actions_&]:inline-flex [.tw-booking-actions_&]:items-center [.tw-booking-actions_&]:gap-[7px] [@media(max-width:650px)]:[.tw-booking-actions_&]:justify-center [.tw-appointment-pagination_&]:min-h-[34px] [.tw-appointment-pagination_&]:p-[0_12px] [.tw-appointment-pagination_&:disabled]:opacity-[.5] [.tw-appointment-pagination_&:disabled]:cursor-not-allowed [@media(max-width:650px)]:[.tw-reception-toolbar>&]:flex-[1_1_100%] tw-button-outline border-[color:var(--line)] [color:var(--text)] [&:hover]:border-[color:var(--teal)] [&:hover]:[color:var(--teal)]" disabled={busy} onClick={cancel}>{busy?t("saving"):t("cancel")}</button></div>}
+      {role!=="patient"&&<div className="grid gap-1 rounded-lg bg-[color-mix(in_srgb,var(--teal)_7%,var(--surface))] p-3 text-sm text-[var(--text)]"><strong>{t("patient")}: {appointment.patientName}</strong>{appointment.patientPhone&&<span className="text-xs text-[var(--muted)]">{appointment.patientPhone}</span>}</div>}
+      {appointment.cancellationReason&&<p className="m-0 text-xs text-[var(--muted)]">{t("cancellationReason")}: {appointment.cancellationReason}</p>}
+      {role==="patient"
+        ?<AppointmentNotesEditor appointmentId={appointment.id} mode="patient" patientNote={appointment.patientNote} staffNotes={null}/>
+        :<AppointmentNotesEditor appointmentId={appointment.id} mode="staff" patientNote={appointment.patientNote} staffNotes={appointment.staffNotes}/>}
+      {appointment.status==="CONFIRMED"&&appointment.service.isOnlineConsultation&&appointment.videoRoomName&&(role==="patient"||role==="doctor")&&<section className="grid gap-2 rounded-xl border border-[var(--line)] bg-[var(--mint)] p-4">
+        <h2 className="m-0 flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><Video size={18} className="text-[var(--teal)]"/>{t("onlineConsultation")}</h2>
+        <p className="m-0 text-xs leading-5 text-[var(--muted)]">{t("videoJoinWindow")}</p>
+        {canJoin
+          ?<a className="inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-lg bg-[var(--teal)] px-4 text-sm font-semibold text-white" href={`https://meet.jit.si/${appointment.videoRoomName}`} target="_blank" rel="noopener noreferrer"><Video size={16}/>{t("joinVideo")}</a>
+          :<span className="text-xs font-medium text-[var(--muted)]">{now<meetingStart?t("videoAvailableSoon"):t("videoWindowClosed")}</span>}
+      </section>}
+      {appointment.status==="CONFIRMED"&&role!=="doctor"&&<div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+        <Link className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--line)] px-4 text-sm font-semibold text-[var(--text)] hover:border-[var(--teal)]" href={rescheduleUrl}>{t("reschedule")}</Link>
+        <button className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[var(--peach)] px-4 text-sm font-semibold text-[#8e573d] disabled:opacity-50" disabled={busy} onClick={cancel}>{busy?t("saving"):t("cancel")}</button>
+      </div>}
     </article>
   </section>;
+}
+
+function Detail({icon:Icon,label,value}:{icon:LucideIcon;label:string;value:string}){
+  return <div className="flex items-start gap-3"><Icon size={18} className="mt-1 shrink-0 text-[var(--teal)]"/><div><span className="block text-xs text-[var(--muted)]">{label}</span><strong className="block text-sm text-[var(--text)]">{value}</strong></div></div>;
 }
