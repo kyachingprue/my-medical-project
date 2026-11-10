@@ -66,9 +66,9 @@ async function PatientDashboardSectionContent({params}: {params: Promise<{locale
     const [entries,services,doctors]=await Promise.all([
       prisma.appointmentWaitlistEntry.findMany({where:{patientId:user.id},orderBy:{createdAt:"desc"},include:{patient:{select:{id:true,name:true,email:true}},doctor:{select:{id:true,name:true}},service:{select:{id:true,name:true}}}}),
       prisma.service.findMany({where:{isActive:true},select:{id:true,name:true},orderBy:{name:"asc"}}),
-      prisma.doctor.findMany({where:{isActive:true},select:{id:true,name:true},orderBy:{name:"asc"}}),
+      prisma.doctor.findMany({where:{isActive:true},select:{id:true,name:true,services:{where:{service:{isActive:true}},select:{serviceId:true}}},orderBy:{name:"asc"}}),
     ]);
-    return <WaitlistManager role="patient" entries={entries} services={services} doctors={doctors}/>;
+    return <WaitlistManager role="patient" entries={entries} services={services} doctors={doctors.map(doctor=>({id:doctor.id,name:doctor.name,serviceIds:doctor.services.map(service=>service.serviceId)}))}/>;
   }
   return <PatientSectionContent translationKey={key} />;
 }

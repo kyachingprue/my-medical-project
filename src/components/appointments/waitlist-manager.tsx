@@ -16,7 +16,7 @@ type Props={
     patient:{id:string;name:string;email:string};
   }[];
   services:{id:string;name:string}[];
-  doctors:{id:string;name:string}[];
+  doctors:{id:string;name:string;serviceIds?:string[]}[];
 };
 const inputClass="min-h-11 w-full rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 text-sm text-[var(--text)]";
 
@@ -25,6 +25,9 @@ export function WaitlistManager({role,entries,services,doctors}:Props){
   const feedback=useTranslations("feedback");
   const router=useRouter();
   const [busy,setBusy]=useState(false);
+  const [serviceId,setServiceId]=useState("");
+  const [doctorId,setDoctorId]=useState("");
+  const availableDoctors=doctors.filter(doctor=>doctor.serviceIds?.includes(serviceId));
 
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
@@ -36,7 +39,7 @@ export function WaitlistManager({role,entries,services,doctors}:Props){
       const response=await fetch("/api/waitlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.fromEntries(form.entries()))});
       const result=await response.json() as {error?:{code?:string}};
       if(!response.ok){
-        toast.error(getSafeApiErrorMessage(response.status,result.error?.code,{
+        toast.error(result.error?.code==="DOCTOR_SERVICE_UNAVAILABLE"?t("doctorUnavailable"):getSafeApiErrorMessage(response.status,result.error?.code,{
           permissionError:feedback("permissionError"),
           serverError:feedback("serverError"),
           validationError:feedback("validationError"),
@@ -45,6 +48,8 @@ export function WaitlistManager({role,entries,services,doctors}:Props){
         return;
       }
       formElement.reset();
+      setServiceId("");
+      setDoctorId("");
       toast.success(t("added"));
       router.refresh();
     }catch{
@@ -114,8 +119,8 @@ export function WaitlistManager({role,entries,services,doctors}:Props){
   return <section className="grid gap-6">
     <header className="grid gap-2"><span className="text-xs font-bold tracking-[.15em] text-[var(--teal)]">{t("kicker")}</span><h1 className="m-0 text-3xl font-semibold text-[var(--text)]">{t("title")}</h1><p className="m-0 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t(role==="patient"?"patientDescription":"staffDescription")}</p></header>
     {role==="patient"&&<form onSubmit={submit} className="grid gap-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] sm:grid-cols-2 sm:p-6">
-      <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("service")}<select className={inputClass} name="serviceId" required defaultValue=""><option value="" disabled>{t("selectService")}</option>{services.map(service=><option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
-      <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("doctor")}<select className={inputClass} name="doctorId" defaultValue=""><option value="">{t("anyDoctor")}</option>{doctors.map(doctor=><option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select></label>
+      <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("service")}<select className={inputClass} name="serviceId" required value={serviceId} onChange={event=>{setServiceId(event.target.value);setDoctorId("");}}><option value="" disabled>{t("selectService")}</option>{services.map(service=><option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
+      <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("doctor")}<select className={inputClass} name="doctorId" value={doctorId} disabled={!serviceId} onChange={event=>setDoctorId(event.target.value)}><option value="">{serviceId?t("anyDoctor"):t("selectServiceFirst")}</option>{availableDoctors.map(doctor=><option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select></label>
       <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("fromDate")}<input className={inputClass} type="date" name="fromDate" required min={today} max={maxDateValue}/></label>
       <label className="grid gap-2 text-sm font-medium text-[var(--text)]">{t("throughDate")}<input className={inputClass} type="date" name="throughDate" required min={today} max={maxDateValue}/></label>
       <label className="grid gap-2 text-sm font-medium text-[var(--text)] sm:col-span-2">{t("notes")}<textarea className={`${inputClass} min-h-24 resize-y py-2`} name="notes" maxLength={1000}/></label>

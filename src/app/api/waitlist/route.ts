@@ -8,7 +8,7 @@ import {prisma} from "@/lib/prisma";
 
 const createSchema=z.object({
   serviceId:z.string().min(1),
-  doctorId:z.string().min(1).optional(),
+  doctorId:z.preprocess(value=>value===""?undefined:value,z.string().min(1).optional()),
   fromDate:appointmentDateSchema,
   throughDate:appointmentDateSchema,
   notes:z.string().trim().max(1000).optional(),
@@ -66,7 +66,7 @@ export async function POST(request:Request){
       });
       await logUserAction(tx,access.user.id,"CREATE","AppointmentWaitlistEntry",created.id,{serviceId:created.serviceId,doctorId:created.doctorId});
       return {kind:"created" as const,entry:created};
-    });
+    },{maxWait:10_000,timeout:20_000});
     if(entry.kind==="service-missing")return apiError("SERVICE_NOT_FOUND","Service not found.",404);
     if(entry.kind==="doctor-unavailable")return apiError("DOCTOR_SERVICE_UNAVAILABLE","This doctor is not available for the selected service.",409);
     return NextResponse.json({data:entry.entry},{status:201});

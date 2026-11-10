@@ -21,7 +21,7 @@ export async function PATCH(request:Request,{params}:Context){
       const entry=await tx.appointmentWaitlistEntry.update({where:{id},data:{status:parsed.data.status as WaitlistStatus}});
       await logUserAction(tx,access.user.id,"STATUS_CHANGE","AppointmentWaitlistEntry",id,{statusBefore:current.status,statusAfter:entry.status});
       return entry;
-    });
+    },{maxWait:10_000,timeout:20_000});
     return result?NextResponse.json({data:result}):apiError("WAITLIST_ENTRY_NOT_FOUND","Waiting list entry not found.",404);
   }catch(error){
     console.error("Could not update waiting list entry:",error);
@@ -43,7 +43,7 @@ export async function DELETE(_request:Request,{params}:Context){
       const entry=await tx.appointmentWaitlistEntry.update({where:{id},data:{status:WaitlistStatus.CANCELLED}});
       await logUserAction(tx,access.user.id,"CANCEL","AppointmentWaitlistEntry",id,{statusBefore:current.status});
       return entry;
-    });
+    },{maxWait:10_000,timeout:20_000});
     return result?NextResponse.json({data:result}):apiError("WAITLIST_ENTRY_NOT_FOUND","Waiting list entry not found.",404);
   }catch(error){
     console.error("Could not cancel waiting list entry:",error);
