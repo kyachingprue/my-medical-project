@@ -43,3 +43,10 @@
   :lang(bn) { font-family: "Nirmala UI", "Noto Sans Bengali", var(--font-geist-sans), sans-serif; }
   svg { flex-shrink: 0; }
 }
+
+@media (max-width: 760px) {
+  .tw-directory-grid,
+  .tw-care-scroll-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
