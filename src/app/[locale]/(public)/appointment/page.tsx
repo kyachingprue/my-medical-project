@@ -1,7 +1,6 @@
 import {Suspense} from "react";
 import {redirect} from "next/navigation";
 import {getTranslations} from "next-intl/server";
-import {connection} from "next/server";
 import {BookingWizard} from "@/components/appointments/booking-wizard";
 import {DashboardLoading} from "@/components/dashboards/dashboard-loading";
 import {getCurrentUser} from "@/lib/auth/session";
@@ -15,13 +14,13 @@ export default function AppointmentPage({params}:Props) {
 }
 
 async function AppointmentContent({params}:Props) {
-  await connection();
   const {locale} = await params;
   const user = await getCurrentUser();
+  if (!user) redirect(`/${locale}/sign-in?returnTo=%2Fappointment`);
+  if (user.role !== "PATIENT") redirect(`/${locale}/${user.role.toLowerCase()}/dashboard`);
+
   const ui = await getTranslations("appointmentUi");
   const clinical = await getTranslations("clinical");
-
-  if (user && user.role !== "PATIENT") redirect(`/${locale}/${user.role.toLowerCase()}/dashboard`);
 
   return <section className="mx-auto grid w-full max-w-[1180px] gap-7">
     <header className="relative overflow-hidden rounded-[26px] border border-[var(--line)] bg-[linear-gradient(125deg,color-mix(in_srgb,var(--teal)_16%,var(--surface)),var(--surface)_72%)] p-6 sm:p-9 lg:p-11">
@@ -41,8 +40,8 @@ async function AppointmentContent({params}:Props) {
       <BookingHighlight icon={Clock3} title={clinical("chooseTimeTitle")} description={clinical("chooseTimeDescription")}/>
       <BookingHighlight icon={Mail} title={clinical("emailConfirmationTitle")} description={clinical("emailConfirmationDescription")}/>
     </div>
-    {user&&<p className="m-0 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 text-xs leading-5 text-[var(--muted)]"><Mail size={15} className="text-[var(--teal)]"/>{clinical("bookingConfirmationEmail")}<strong className="text-[var(--text)]">{user.email}</strong></p>}
-    <BookingWizard mode="patient" canBook={Boolean(user)} />
+    <p className="m-0 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 text-xs leading-5 text-[var(--muted)]"><Mail size={15} className="text-[var(--teal)]"/>{clinical("bookingConfirmationEmail")}<strong className="text-[var(--text)]">{user.email}</strong></p>
+    <BookingWizard mode="patient" />
   </section>;
 }
 
