@@ -1,11 +1,18 @@
 import {getTranslations} from "next-intl/server";
+import {connection} from "next/server";
 import {BookingWizard} from "@/components/appointments/booking-wizard";
-import {CalendarCheck,Clock3,Mail,ShieldCheck,Stethoscope} from "lucide-react";
+import {CalendarCheck,Clock3,Mail,ShieldCheck,Stethoscope,CalendarX2} from "lucide-react";
 import type {LucideIcon} from "lucide-react";
+import {prisma} from "@/lib/prisma";
 
 export default async function AppointmentPage() {
-  const ui = await getTranslations("appointmentUi");
-  const clinical = await getTranslations("clinical");
+  await connection();
+  const [ui,clinical,settings] = await Promise.all([
+    getTranslations("appointmentUi"),
+    getTranslations("clinical"),
+    prisma.clinicSettings.findUnique({where:{id:"clinic"},select:{bookingEnabled:true}}),
+  ]);
+  const bookingEnabled=settings?.bookingEnabled??false;
 
   return <section className="mx-auto grid w-full max-w-[1180px] gap-7">
     <header className="relative overflow-hidden rounded-[26px] border border-[var(--line)] bg-[linear-gradient(125deg,color-mix(in_srgb,var(--teal)_16%,var(--surface)),var(--surface)_72%)] p-6 sm:p-9 lg:p-11">
@@ -25,7 +32,7 @@ export default async function AppointmentPage() {
       <BookingHighlight icon={Clock3} title={clinical("chooseTimeTitle")} description={clinical("chooseTimeDescription")}/>
       <BookingHighlight icon={Mail} title={clinical("emailConfirmationTitle")} description={clinical("emailConfirmationDescription")}/>
     </div>
-    <BookingWizard mode="patient" />
+    {bookingEnabled?<BookingWizard mode="patient" />:<div role="status" className="mx-auto flex w-full max-w-[850px] items-start gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-sm text-[var(--muted)] shadow-[var(--shadow)]"><CalendarX2 size={20} className="mt-0.5 shrink-0 text-[var(--teal)]"/><p className="m-0 leading-6">{clinical("bookingPaused")}</p></div>}
   </section>;
 }
 

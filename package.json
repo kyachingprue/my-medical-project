@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/management/schemas.test.ts src/lib/appointments/time.test.ts src/lib/appointments/schemas.test.ts src/lib/notifications/email.test.ts",
+    "test": "node --import tsx --test src/lib/management/schemas.test.ts src/lib/management/clinic-settings.test.ts src/lib/appointments/time.test.ts src/lib/appointments/schemas.test.ts src/lib/notifications/email.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

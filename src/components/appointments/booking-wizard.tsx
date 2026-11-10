@@ -28,6 +28,7 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
   const t=useTranslations("appointments");
   const ui=useTranslations("appointmentUi");
   const notificationUi=useTranslations("notificationEnhancement");
+  const clinical=useTranslations("clinical");
   const feedback=useTranslations("feedback");
   const m=useTranslations("management");
   const router=useRouter();
@@ -114,6 +115,10 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
       if(!response.ok){
         if(response.status===401&&mode==="patient"&&!appointment){
           router.push("/sign-in?returnTo=%2Fappointment");
+          return;
+        }
+        if(body.error?.code==="BOOKING_PAUSED"){
+          toast.error(clinical("bookingPaused"));
           return;
         }
         if(body.error?.code==="SLOT_UNAVAILABLE"){

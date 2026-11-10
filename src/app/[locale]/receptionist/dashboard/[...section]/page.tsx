@@ -7,6 +7,7 @@ import {prisma} from "@/lib/prisma";
 import {WaitlistManager} from "@/components/appointments/waitlist-manager";
 import {UserRole} from "@prisma/client";
 import {PatientDirectory} from "@/components/dashboards/patient-directory";
+import {ReceptionistSettings} from "@/components/dashboards/receptionist-settings";
 
 const sectionKeys: Record<string, string> = {
   appointments: "appointments",
@@ -44,10 +45,23 @@ export default async function ReceptionistDashboardSection({params}: {params: Pr
     });
     return <PatientDirectory patients={patients} locale={locale}/>;
   }
-  return <ReceptionistSectionContent translationKey={key} />;
+  return <ReceptionistSectionContent translationKey={key} locale={locale}/>;
 }
 
-async function ReceptionistSectionContent({translationKey}: {translationKey: string}) {
+async function ReceptionistSectionContent({translationKey,locale}: {translationKey: string;locale:string}) {
+  if(translationKey==="settings"){
+    const [settings,businessHours]=await Promise.all([
+      prisma.clinicSettings.findUnique({where:{id:"clinic"}}),
+      prisma.clinicBusinessHours.findMany(),
+    ]);
+    if(!settings||businessHours.length!==7)throw new Error("Clinic settings have not been initialized.");
+    return <ReceptionistSettings initialSettings={{
+      bookingEnabled:settings.bookingEnabled,
+      announcementEnabled:settings.announcementEnabled,
+      announcement:settings.announcement??"",
+      businessHours:businessHours.map(({dayOfWeek,isOpen,startTime,endTime,breakStart,breakEnd})=>({dayOfWeek,isOpen,startTime,endTime,breakStart,breakEnd})),
+    }} locale={locale}/>;
+  }
   if(translationKey==="waitingList"){
     const [entries,services,doctors]=await Promise.all([
       prisma.appointmentWaitlistEntry.findMany({where:{status:{in:["WAITING","CONTACTED"]}},orderBy:{createdAt:"asc"},include:{patient:{select:{id:true,name:true,email:true}},doctor:{select:{id:true,name:true}},service:{select:{id:true,name:true}}},take:500}),

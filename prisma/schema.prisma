@@ -175,6 +175,24 @@ model WorkingHours {
   @@index([doctorId, dayOfWeek])
 }
 
+model ClinicSettings {
+  id                 String   @id @default("clinic")
+  bookingEnabled     Boolean  @default(true)
+  announcementEnabled Boolean @default(false)
+  announcement       String?  @db.VarChar(500)
+  updatedAt          DateTime @updatedAt
+}
+
+model ClinicBusinessHours {
+  dayOfWeek  Weekday  @id
+  isOpen     Boolean  @default(true)
+  startTime  String   @default("10:00") @db.VarChar(5)
+  endTime    String   @default("20:00") @db.VarChar(5)
+  breakStart String?  @db.VarChar(5)
+  breakEnd   String?  @db.VarChar(5)
+  updatedAt  DateTime @updatedAt
+}
+
 model TimeOff {
   id        String   @id @default(cuid())
   doctorId  String

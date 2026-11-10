@@ -39,6 +39,11 @@ async function createAppointmentTransaction(
   try{
     const appointment=await prisma.$transaction(async tx=>{
       const now=new Date();
+      if(actor.role===UserRole.PATIENT){
+        const clinic=await tx.clinicSettings.findUnique({where:{id:"clinic"},select:{bookingEnabled:true}});
+        if(!clinic)return fail("CLINIC_SETTINGS_UNAVAILABLE","Clinic booking settings are unavailable.",503);
+        if(!clinic.bookingEnabled)return fail("BOOKING_PAUSED","Online appointment booking is temporarily paused.",503);
+      }
       const patientUser=patient.patientId?await lockPatientRow(tx,patient.patientId):null;
       if(patient.patientId&&!patientUser)return fail("PATIENT_NOT_FOUND","Patient account not found.",404);
       if(patientUser&&patientUser.role!==UserRole.PATIENT)return fail("INVALID_PATIENT","Appointments can only be assigned to patient accounts.",400);
