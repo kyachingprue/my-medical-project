@@ -5,6 +5,8 @@ import {AccountProfileEditor} from "@/components/auth/account-profile-editor";
 import {requireRole} from "@/lib/auth/authorize";
 import {prisma} from "@/lib/prisma";
 import {WaitlistManager} from "@/components/appointments/waitlist-manager";
+import {UserRole} from "@prisma/client";
+import {PatientDirectory} from "@/components/dashboards/patient-directory";
 
 const sectionKeys: Record<string, string> = {
   appointments: "appointments",
@@ -33,6 +35,14 @@ export default async function ReceptionistDashboardSection({params}: {params: Pr
       updated={dateFormat.format(user.updatedAt)}
       role="RECEPTIONIST"
     />;
+  }
+  if(section[0]==="patients"){
+    const patients=await prisma.user.findMany({
+      where:{role:UserRole.PATIENT},
+      select:{id:true,name:true,email:true,phone:true,emailVerified:true,createdAt:true},
+      orderBy:[{createdAt:"desc"},{id:"asc"}],
+    });
+    return <PatientDirectory patients={patients} locale={locale}/>;
   }
   return <ReceptionistSectionContent translationKey={key} />;
 }
