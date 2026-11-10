@@ -112,6 +112,10 @@ export function BookingWizard({mode,appointment,canBook=true}:Props){
       const response=await fetch(endpoint,{method:appointment?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
       const body=await response.json() as ApiResult<{id:string}>;
       if(!response.ok){
+        if(response.status===401&&mode==="patient"&&!appointment){
+          router.push("/sign-in?returnTo=%2Fappointment");
+          return;
+        }
         if(body.error?.code==="SLOT_UNAVAILABLE"){
           setSlotTime("");
           toast.error(feedback("slotUnavailable"));

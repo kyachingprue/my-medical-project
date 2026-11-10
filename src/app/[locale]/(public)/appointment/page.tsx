@@ -1,24 +1,9 @@
-import {Suspense} from "react";
-import {redirect} from "next/navigation";
 import {getTranslations} from "next-intl/server";
 import {BookingWizard} from "@/components/appointments/booking-wizard";
-import {DashboardLoading} from "@/components/dashboards/dashboard-loading";
-import {getCurrentUser} from "@/lib/auth/session";
 import {CalendarCheck,Clock3,Mail,ShieldCheck,Stethoscope} from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 
-type Props={params:Promise<{locale:string}>};
-
-export default function AppointmentPage({params}:Props) {
-  return <Suspense fallback={<DashboardLoading kind="booking" label="Loading appointment booking"/>}><AppointmentContent params={params}/></Suspense>;
-}
-
-async function AppointmentContent({params}:Props) {
-  const {locale} = await params;
-  const user = await getCurrentUser();
-  if (!user) redirect(`/${locale}/sign-in?returnTo=%2Fappointment`);
-  if (user.role !== "PATIENT") redirect(`/${locale}/${user.role.toLowerCase()}/dashboard`);
-
+export default async function AppointmentPage() {
   const ui = await getTranslations("appointmentUi");
   const clinical = await getTranslations("clinical");
 
@@ -40,7 +25,6 @@ async function AppointmentContent({params}:Props) {
       <BookingHighlight icon={Clock3} title={clinical("chooseTimeTitle")} description={clinical("chooseTimeDescription")}/>
       <BookingHighlight icon={Mail} title={clinical("emailConfirmationTitle")} description={clinical("emailConfirmationDescription")}/>
     </div>
-    <p className="m-0 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 text-xs leading-5 text-[var(--muted)]"><Mail size={15} className="text-[var(--teal)]"/>{clinical("bookingConfirmationEmail")}<strong className="text-[var(--text)]">{user.email}</strong></p>
     <BookingWizard mode="patient" />
   </section>;
 }
